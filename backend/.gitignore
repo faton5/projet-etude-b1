@@ -1,0 +1,7 @@
+potager.db
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+.pytest_cache/
+.venv/

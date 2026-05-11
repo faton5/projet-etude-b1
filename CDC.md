@@ -1,34 +1,103 @@
 # Cahier des charges technique — V0 Potager EHPAD tomate
 
-## 1. Objectif du projet
+## 1. Contexte du projet
 
-L’objectif de la V0 est de créer une application web simple permettant au personnel d’un EHPAD de savoir si les conditions sont favorables pour planter des tomates.
+Le projet consiste à créer une application web permettant d’aider un EHPAD rural ou semi-rural à gérer plus facilement un petit potager pédagogique, avec un premier focus sur la culture de tomates.
 
-La solution doit analyser les conditions actuelles et les prévisions des prochains jours afin de donner une recommandation claire :
+L’objectif n’est pas de rendre l’EHPAD autonome en alimentation. L’objectif est plutôt de proposer une aide simple au personnel pour savoir si les conditions sont favorables ou non pour planter des tomates, tout en gardant une activité agréable et compréhensible pour les résidents.
+
+La V0 doit donc rester réaliste : une seule culture, peu d’écrans, une interface simple et une IA prédictive centrée sur une décision claire.
+
+---
+
+## 2. Objectif principal de la V0
+
+La V0 doit permettre de prédire si le moment est favorable pour planter des tomates dans le potager de l’EHPAD.
+
+L’application doit analyser plusieurs données :
+
+- saison ;
+- température actuelle ;
+- température minimale prévue sur les prochains jours ;
+- température moyenne prévue ;
+- pluie prévue ;
+- risque de gel ;
+- humidité du sol ;
+- type de sol ;
+- type d’irrigation ;
+- données IoT dans une version future.
+
+À partir de ces données, le modèle prédictif doit retourner une recommandation simple :
 
 ```text
-Planter maintenant
-Attendre quelques jours
-Conditions défavorables
+viable
+attendre
+non_viable
 ```
 
-L’intérêt de l’IA prédictive est de ne pas seulement regarder la météo du jour. Par exemple, même s’il fait bon aujourd’hui, si un risque de gel est prévu dans deux jours, l’application doit recommander d’attendre.
+La recommandation doit toujours être accompagnée d’une explication simple, compréhensible par le personnel de l’EHPAD.
 
-## 2. Stack technique retenue
+Exemple :
 
-| Partie          | Technologie                         | Rôle                                              |
-| --------------- | ----------------------------------- | ------------------------------------------------- |
-| Frontend        | Next.js                             | Dashboard web                                     |
-| Style           | Tailwind CSS                        | Interface propre et responsive                    |
-| Backend         | FastAPI                             | API Python                                        |
-| IA prédictive   | scikit-learn                        | Arbre de décision                                 |
-| Modèle          | DecisionTreeClassifier              | Classification : planter / attendre / défavorable |
-| Base de données | SQLite                              | Stockage léger pour la V0                         |
-| Déploiement     | Docker / Docker Compose             | Lancement simple du front et du back              |
-| Cloud           | Azure étudiant                      | Hébergement possible                              |
-| Dataset         | Données météo + dataset semi-simulé | Entraînement du modèle                            |
+```text
+Recommandation : attendre
+Explication : les températures minimales prévues sont encore trop basses pour planter des tomates sans risque.
+```
 
-## 3. Architecture générale
+---
+
+## 3. Périmètre de la V0
+
+### 3.1 Ce que la V0 doit faire
+
+La V0 doit permettre de :
+
+- afficher un dashboard simple ;
+- lancer une prédiction de viabilité pour la tomate ;
+- prendre en compte des données météo et agricoles ;
+- utiliser un modèle XGBoost pour prédire une classe ;
+- afficher une recommandation claire ;
+- afficher une explication de la recommandation ;
+- stocker l’historique des prédictions ;
+- être lançable facilement avec Docker ;
+- être déployable plus tard sur Azure.
+
+### 3.2 Ce que la V0 ne fait pas encore
+
+La V0 ne doit pas essayer de tout faire.
+
+Elle ne gère pas encore :
+
+- plusieurs légumes ;
+- une vraie automatisation complète de l’arrosage ;
+- une prédiction de rendement précise ;
+- une reconnaissance d’image des maladies ;
+- une connexion IoT obligatoire ;
+- un système complexe de comptes utilisateurs ;
+- une base de données lourde type PostgreSQL.
+
+Ces éléments peuvent être prévus dans les évolutions futures.
+
+---
+
+## 4. Stack technique retenue
+
+| Partie | Technologie | Rôle |
+|---|---|---|
+| Frontend | Next.js | Dashboard web |
+| Style | Tailwind CSS | Interface simple et responsive |
+| Backend | FastAPI | API Python |
+| IA prédictive | XGBoost | Modèle de classification prédictive |
+| Préparation des données | pandas, scikit-learn | Nettoyage et transformation des données |
+| Base de données | SQLite | Historique des prédictions pour la V0 |
+| Données météo | Open-Meteo | Prévisions et météo historique |
+| Conteneurisation | Docker / Docker Compose | Lancement simple du projet |
+| Cloud | Azure étudiant | Hébergement possible |
+| IoT futur | Azure IoT Hub ou API dédiée | Réception des données capteurs |
+
+---
+
+## 5. Architecture générale
 
 ```text
 Utilisateur EHPAD
@@ -37,42 +106,54 @@ Dashboard Next.js
       ↓
 API FastAPI
       ↓
-Service météo / saisie manuelle
+Récupération météo / saisie manuelle
       ↓
 Préparation des données
       ↓
-Modèle IA arbre de décision
+Modèle XGBoost
       ↓
-SQLite
+Prédiction : viable / attendre / non_viable
       ↓
-Résultat affiché au dashboard
+SQLite : historique
+      ↓
+Affichage du résultat
 ```
 
-Le frontend ne fait pas la logique métier. Il sert surtout à afficher les informations et envoyer les données au backend.
+Le frontend sert à afficher les informations et à envoyer les demandes de prédiction.
 
-Le backend contient la logique importante :
+Le backend contient la logique principale :
 
-```text
-- récupération ou saisie des données météo
-- calcul des indicateurs utiles
-- appel du modèle IA
-- génération de l’explication
-- sauvegarde de l’historique
-```
+- récupérer les données météo ;
+- préparer les variables nécessaires au modèle ;
+- appeler le modèle XGBoost ;
+- générer une explication ;
+- stocker le résultat dans SQLite ;
+- renvoyer le résultat au dashboard.
 
-## 4. Frontend — Dashboard Next.js
+---
 
-### 4.1 Pages nécessaires
+## 6. Frontend — Next.js + Tailwind CSS
 
-| Page                | Rôle                                                 |
-| ------------------- | ---------------------------------------------------- |
-| Accueil / Dashboard | Vue principale avec la recommandation                |
-| Nouvelle prédiction | Formulaire météo / localisation                      |
-| Historique          | Liste des anciennes prédictions                      |
-| Détails prédiction  | Explication complète d’une recommandation            |
-| Paramètres          | Localisation de l’EHPAD, type de culture, mode météo |
+### 6.1 Objectif du frontend
 
-Pour la V0, tu peux faire seulement :
+Le frontend doit être très simple, car le public visé n’est pas technique.
+
+Le personnel de l’EHPAD doit pouvoir comprendre rapidement :
+
+- si les conditions sont bonnes ;
+- pourquoi l’application recommande de planter ou d’attendre ;
+- quelles données ont été prises en compte.
+
+### 6.2 Pages prévues
+
+| Page | Rôle |
+|---|---|
+| `/dashboard` | Vue principale avec la dernière recommandation |
+| `/predict` | Formulaire ou bouton pour lancer une prédiction |
+| `/history` | Historique des anciennes prédictions |
+| `/settings` | Paramètres simples : localisation, surface, type de sol |
+
+Pour une V0 courte, les pages prioritaires sont :
 
 ```text
 /dashboard
@@ -80,467 +161,453 @@ Pour la V0, tu peux faire seulement :
 /history
 ```
 
-### 4.2 Informations affichées sur le dashboard
+### 6.3 Dashboard principal
 
 Le dashboard doit afficher :
 
-```text
-- date de la prédiction
-- localisation de l’EHPAD
-- culture analysée : tomate
-- température actuelle
-- température minimale prévue sur 7 jours
-- température moyenne prévue sur 7 jours
-- risque de gel
-- pluie prévue
-- humidité du sol si disponible
-- recommandation IA
-- explication simple
-```
+- la culture analysée : tomate ;
+- la date de la prédiction ;
+- la localisation approximative de l’EHPAD ;
+- la recommandation IA ;
+- le score de confiance ;
+- l’explication simple ;
+- les principales données météo ;
+- les principaux KPI.
 
 Exemple d’affichage :
 
 ```text
-Recommandation : Attendre quelques jours
-
-Explication :
-Même si la température actuelle est correcte, une température minimale de 3°C est prévue dans les prochains jours. Il vaut mieux attendre avant de planter les tomates.
+Culture : Tomate
+Recommandation : attendre
+Confiance : 82 %
+Raison : la température minimale prévue est trop basse pour planter sans risque.
 ```
 
-### 4.3 Formulaire de prédiction
+### 6.4 KPI à afficher
 
-Le formulaire doit contenir :
+| KPI | Utilité |
+|---|---|
+| Nombre total de prédictions | Voir l’utilisation de l’outil |
+| Taux de prédictions viables | Voir les périodes favorables |
+| Taux de prédictions à attendre | Voir les situations moyennes |
+| Taux de prédictions non viables | Voir les risques évités |
+| Température minimale prévue | Indicateur clé pour la tomate |
+| Risque de gel | Indicateur critique |
+| Humidité du sol | Important pour l’arrosage |
+| Score de confiance du modèle | Rendre la prédiction plus transparente |
 
-| Champ                       | Type                 | Exemple |
-| --------------------------- | -------------------- | ------- |
-| Localisation                | texte ou coordonnées | Bruz    |
-| Mois                        | nombre ou auto       | 5       |
-| Température actuelle        | nombre               | 21°C    |
-| Température min 7 jours     | nombre               | 8°C     |
-| Température moyenne 7 jours | nombre               | 17°C    |
-| Pluie prévue                | oui/non              | oui     |
-| Risque de gel               | oui/non              | non     |
-| Humidité du sol             | nombre optionnel     | 55 %    |
+### 6.5 Formulaire de prédiction
 
-Pour la V0, si tu n’as pas encore l’API météo, tu peux faire une **saisie manuelle**. Ensuite, tu ajoutes l’automatisation météo.
+Le formulaire doit permettre de saisir ou récupérer :
 
-### 4.4 KPI à afficher
+| Champ | Type | Exemple |
+|---|---|---|
+| Localisation | texte | Rennes |
+| Saison | automatique ou liste | printemps |
+| Type de sol | liste | limoneux |
+| Type d’irrigation | liste | manuel / goutte-à-goutte |
+| Humidité du sol | nombre | 55 % |
+| Température actuelle | nombre | 20 °C |
+| Température minimale sur 7 jours | nombre | 8 °C |
+| Température moyenne sur 7 jours | nombre | 16 °C |
+| Pluie prévue | oui / non | oui |
+| Risque de gel | oui / non | non |
 
-Les KPI sont importants pour montrer que ton dashboard est utile.
+Dans la V0, certaines valeurs peuvent être saisies manuellement si l’API météo n’est pas encore totalement intégrée.
 
-| KPI                                      | Explication                                      |
-| ---------------------------------------- | ------------------------------------------------ |
-| Nombre de prédictions effectuées         | Montre l’utilisation de l’outil                  |
-| Nombre de recommandations “planter”      | Nombre de moments favorables détectés            |
-| Nombre de recommandations “attendre”     | Montre que l’outil évite les mauvaises décisions |
-| Nombre de recommandations “défavorables” | Montre les risques météo détectés                |
-| Température minimale prévue              | KPI important pour le risque de gel              |
-| Risque de gel détecté                    | Oui / non                                        |
-| Fiabilité estimée                        | Score ou confiance du modèle                     |
-| Historique des décisions                 | Permet de suivre l’évolution                     |
+---
 
-Pour une V0, tu peux faire simple :
+## 7. Backend — FastAPI
 
-```text
-Total prédictions : 14
-Planter : 4
-Attendre : 7
-Défavorable : 3
-Dernier risque de gel : oui
-```
+### 7.1 Rôle du backend
 
-## 5. Backend — FastAPI
-
-### 5.1 Rôle du backend
-
-Le backend est le cerveau de l’application.
+Le backend est la partie centrale de l’application.
 
 Il doit gérer :
 
-```text
-- les routes API
-- la récupération des données
-- le nettoyage des données
-- le calcul des variables météo
-- l’appel au modèle IA
-- la création d’une explication
-- le stockage dans SQLite
-```
+- les routes API ;
+- la récupération des données météo ;
+- la préparation des données ;
+- l’appel au modèle XGBoost ;
+- la création d’une explication ;
+- le stockage dans SQLite ;
+- la récupération de l’historique.
 
-### 5.2 Routes API nécessaires
+### 7.2 Routes API nécessaires
 
-| Route           | Méthode | Rôle                                    |
-| --------------- | ------- | --------------------------------------- |
-| `/health`       | GET     | Vérifier que l’API fonctionne           |
-| `/predict`      | POST    | Faire une prédiction                    |
-| `/history`      | GET     | Récupérer l’historique                  |
-| `/history/{id}` | GET     | Voir une prédiction précise             |
-| `/model/info`   | GET     | Informations sur le modèle              |
-| `/weather`      | GET     | Récupérer la météo si API météo ajoutée |
+| Route | Méthode | Rôle |
+|---|---|---|
+| `/health` | GET | Vérifier que l’API fonctionne |
+| `/predict` | POST | Lancer une prédiction |
+| `/history` | GET | Récupérer l’historique |
+| `/history/{id}` | GET | Voir une prédiction précise |
+| `/model/info` | GET | Voir les informations du modèle |
+| `/weather` | GET | Récupérer la météo si API intégrée |
 
-### 5.3 Exemple de payload `/predict`
+### 7.3 Exemple de payload `/predict`
 
 ```json
 {
-  "location": "Bruz",
-  "mois": 5,
-  "temp_aujourdhui": 21,
-  "temp_min_7j": 4,
+  "location": "Rennes",
+  "culture": "tomate",
+  "saison": "printemps",
+  "type_sol": "limoneux",
+  "irrigation": "manuel",
+  "humidite_sol": 55,
+  "temp_actuelle": 20,
+  "temp_min_7j": 7,
   "temp_moyenne_7j": 15,
   "pluie_7j": 1,
-  "risque_gel_7j": 1,
-  "humidite_sol": 55
+  "risque_gel_7j": 0,
+  "water_usage": 80
 }
 ```
 
-### 5.4 Exemple de réponse API
+### 7.4 Exemple de réponse API
 
 ```json
 {
-  "recommandation": "conditions_defavorables",
-  "score_confiance": 0.91,
-  "explication": "Même si la température est correcte aujourd’hui, un risque de gel est prévu dans les prochains jours. Il vaut mieux attendre avant de planter.",
-  "kpi": {
-    "temp_min_7j": 4,
-    "risque_gel_7j": true,
-    "fenetre_analyse": "7 jours"
-  }
+  "recommandation": "attendre",
+  "score_confiance": 0.82,
+  "explication": "Les conditions ne sont pas catastrophiques, mais la température minimale prévue reste trop basse pour planter les tomates sans risque.",
+  "facteurs_importants": [
+    "temp_min_7j",
+    "saison",
+    "humidite_sol"
+  ]
 }
 ```
 
-## 6. IA prédictive
+---
 
-### 6.1 Pourquoi une IA prédictive ?
+## 8. Partie IA prédictive — XGBoost
 
-L’IA prédictive est importante parce que la décision de planter dépend de plusieurs critères en même temps.
+### 8.1 Objectif du modèle
 
-Sans IA, l’application serait juste un calendrier :
+Le modèle IA doit prédire la viabilité d’une plantation de tomates à partir de plusieurs données.
+
+Il ne doit pas seulement appliquer une règle fixe comme :
 
 ```text
-Mai = bonne période = planter
+si température > 18 alors planter
 ```
 
-Mais avec l’IA :
+Il doit apprendre à partir d’un dataset d’entraînement pour prédire une classe.
+
+### 8.2 Modèle retenu
+
+Le modèle retenu est :
 
 ```text
-Mai = bonne période
-Température aujourd’hui = correcte
-Mais gel prévu dans 2 jours
-Donc ne pas planter
+XGBoost Classifier
 ```
 
-L’IA sert donc à prendre une décision plus réaliste.
+XGBoost est un modèle de machine learning basé sur le gradient boosting. Il peut être utilisé pour des problèmes de classification ou de régression.
 
-### 6.2 Type de problème IA
+Dans ce projet, il est utilisé pour faire de la classification.
 
-Ton problème est un problème de **classification**.
+### 8.3 Pourquoi XGBoost est adapté
 
-Le modèle ne prédit pas une température ou un rendement.
-Il prédit une catégorie :
+XGBoost est adapté car :
+
+- il fonctionne bien sur des données tabulaires ;
+- il peut croiser plusieurs variables ;
+- il donne une prédiction avec un score de confiance ;
+- il ne demande pas forcément de GPU ;
+- il est plus crédible qu’un simple arbre de décision ;
+- il peut être amélioré plus tard avec des données IoT.
+
+### 8.4 Type de problème
+
+Le problème est un problème de classification supervisée.
+
+Le modèle reçoit des données en entrée :
 
 ```text
-planter
+saison, type_sol, irrigation, humidite_sol, temperature, pluie, risque_gel...
+```
+
+Et il prédit une classe :
+
+```text
+viable
 attendre
-conditions_defavorables
+non_viable
 ```
 
-Le modèle conseillé est donc :
+### 8.5 Variables d’entrée du modèle
+
+| Variable | Type | Source |
+|---|---|---|
+| culture | texte | fixe : tomate |
+| saison | texte | date actuelle |
+| type_sol | texte | formulaire / dataset |
+| irrigation | texte | formulaire / dataset |
+| humidite_sol | nombre | saisie ou capteur futur |
+| temp_actuelle | nombre | météo ou capteur futur |
+| temp_min_7j | nombre | API météo |
+| temp_moyenne_7j | nombre | API météo |
+| pluie_7j | booléen | API météo |
+| risque_gel_7j | booléen | calcul backend |
+| water_usage | nombre | dataset / estimation / capteur futur |
+
+### 8.6 Sortie du modèle
+
+| Classe | Signification |
+|---|---|
+| `viable` | Les conditions sont favorables pour planter maintenant |
+| `attendre` | Les conditions sont moyennes, il vaut mieux attendre |
+| `non_viable` | Les conditions sont trop risquées |
+
+### 8.7 Exemple de prédiction
 
 ```text
-DecisionTreeClassifier
+Entrée :
+- saison = printemps
+- temp_actuelle = 20 °C
+- temp_min_7j = 3 °C
+- risque_gel_7j = oui
+- humidite_sol = 55 %
+
+Sortie :
+non_viable
+
+Explication :
+Un risque de gel est prévu dans les prochains jours. Il est donc déconseillé de planter les tomates maintenant.
 ```
 
-C’est léger, explicable et suffisant pour une V0.
+---
 
-### 6.3 Variables d’entrée du modèle
+## 9. Dataset et entraînement
 
-| Variable        | Type     | Utilité                                        |
-| --------------- | -------- | ---------------------------------------------- |
-| mois            | int      | Vérifier la période de plantation              |
-| temp_aujourdhui | float    | Conditions actuelles                           |
-| temp_min_7j     | float    | Détecter le froid ou le gel                    |
-| temp_moyenne_7j | float    | Vérifier la stabilité météo                    |
-| pluie_7j        | bool/int | Savoir si la météo est trop humide             |
-| risque_gel_7j   | bool/int | Bloquer la plantation si gel                   |
-| humidite_sol    | float    | Vérifier si le sol est trop sec ou trop humide |
+### 9.1 Problème du dataset
 
-### 6.4 Sortie du modèle
-
-| Sortie                    | Signification                                   |
-| ------------------------- | ----------------------------------------------- |
-| `planter`                 | Conditions favorables                           |
-| `attendre`                | Conditions pas idéales mais pas catastrophiques |
-| `conditions_defavorables` | Risque trop élevé                               |
-
-### 6.5 Logique attendue
-
-Même si c’est un modèle IA, tu dois garder une logique compréhensible.
-
-Exemple :
+Il est difficile de trouver un dataset parfait qui indique directement :
 
 ```text
-Si risque_gel_7j = oui
-→ conditions défavorables
-
-Sinon si température minimale 7j < 10°C
-→ attendre
-
-Sinon si mois entre mai et juin et température moyenne entre 18°C et 27°C
-→ planter
-
-Sinon si température trop haute et sol sec
-→ attendre
-
-Sinon
-→ attendre
+planter aujourd’hui : oui / non
 ```
 
-L’arbre de décision va apprendre ce genre de règles à partir du dataset.
+La stratégie retenue est donc de construire un dataset final à partir de plusieurs sources.
 
-## 7. Dataset
+### 9.2 Sources possibles
 
-### 7.1 Ce qu’il faut chercher
+Le dataset final peut être construit avec :
 
-Tu ne vas peut-être pas trouver un dataset parfait qui dit directement :
+- un dataset agricole Kaggle ;
+- des données météo Open-Meteo ;
+- des règles agronomiques simples liées à la tomate ;
+- des données IoT dans une version future.
+
+### 9.3 Dataset agricole de base
+
+Un dataset agricole peut contenir des colonnes comme :
 
 ```text
-dois-je planter des tomates aujourd’hui ?
+Farm_ID
+Crop_Type
+Irrigation_Type
+Soil_Type
+Season
+Farm_Area
+Fertilizer_Used
+Pesticide_Used
+Water_Usage
+Yield
 ```
 
-Il faut plutôt chercher des datasets avec :
+Ce dataset est utile pour récupérer des informations sur :
+
+- la culture ;
+- le type de sol ;
+- la saison ;
+- l’irrigation ;
+- l’eau utilisée ;
+- le rendement.
+
+Mais il ne suffit pas seul, car il ne contient pas forcément les prévisions météo ni le risque de gel.
+
+### 9.4 Données météo à ajouter
+
+Il faut enrichir le dataset avec :
 
 ```text
-- température
-- pluie
-- humidité
-- sol
-- rendement agricole
-- tomate
-- météo historique
-- données de culture
+temp_actuelle
+temp_min_7j
+temp_moyenne_7j
+pluie_7j
+risque_gel_7j
 ```
 
-Ensuite tu peux créer ta colonne cible toi-même :
+Ces données peuvent venir d’Open-Meteo ou être simulées pour la V0.
+
+### 9.5 Création de la colonne cible
+
+Comme le dataset ne contient pas forcément la colonne `recommandation`, elle sera créée.
+
+Exemple de classes :
 
 ```text
-recommandation = planter / attendre / défavorable
+viable
+attendre
+non_viable
 ```
 
-### 7.2 Datasets possibles
-
-Voici des pistes de datasets ou sources utiles.
-
-| Nom / Source                                                     | Données intéressantes                                                        | Utilité pour ton projet                |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------- |
-| Open-Meteo Forecast API                                          | Prévisions météo, température, pluie                                         | Récupérer météo sur 7 jours            |
-| Open-Meteo Historical Weather API                                | Données météo historiques depuis 1940, température, humidité, précipitations | Créer un dataset météo réaliste        |
-| Open-Meteo Historical Forecast API                               | Anciennes prévisions météo archivées depuis 2022                             | Comparer prévisions et météo réelle    |
-| Kaggle — Crop Yield dataset based on weather set                 | Crop, température, rainfall, humidity, sunlight, soil pH, nutriments         | Base utile pour rendement/culture      |
-| Kaggle — Crop Recommendation Dataset                             | NPK, température, humidité, pH, rainfall, crop recommandé                    | Bon exemple de dataset agricole ML     |
-| Figshare — Crop Recommendation dataset                           | Données pluie, climat, fertilisant                                           | Alternative académique                 |
-| Kaggle — Tomato Greenhouse Environment, Growth & Disease         | Environnement de serre, croissance tomate, météo multi-années                | Plus proche de la tomate               |
-| Mendeley — Crop Recommendation using Soil Properties and Weather | Sol, localisation, pH, nutriments, météo                                     | Données plus complètes sur sol + météo |
-
-Open-Meteo est intéressant car il fournit une API météo gratuite/open-source pour un usage non commercial, sans clé API, et propose aussi des prévisions météo par localisation.  Son API historique permet d’accéder à des données météo passées, avec température, humidité relative, précipitations et autres variables utiles.
-
-Pour les datasets agricoles, Kaggle propose par exemple un dataset de rendement basé sur la météo avec température, rainfall, humidity, sunlight, soil pH et nutriments.  Le Crop Recommendation Dataset contient aussi des variables classiques pour recommander une culture selon les conditions agro-climatiques.  Il existe également un dataset Kaggle sur les tomates en serre qui mélange environnement, croissance et maladies, mais il est plus orienté serre que potager extérieur.
-
-### 7.3 Stratégie réaliste pour toi
-
-Je te conseille cette méthode :
+Exemple de règles de création :
 
 ```text
-1. Chercher un dataset météo/agricole proche.
-2. Garder seulement les colonnes utiles.
-3. Ajouter une colonne recommandation.
-4. Générer des cas réalistes pour la tomate.
-5. Entraîner l’arbre de décision.
-6. Utiliser Open-Meteo pour la prédiction en temps réel.
+Si risque_gel_7j = 1 → non_viable
+Si temp_min_7j < 8 °C → attendre
+Si saison hors période favorable → attendre ou non_viable
+Si temp_moyenne_7j entre 18 et 27 °C et pas de gel → viable
+Si sol trop sec et pas de pluie → attendre
 ```
 
-Tu peux donc assumer un **dataset semi-simulé**.
+Ces règles servent à construire un dataset d’entraînement. Ensuite, le modèle XGBoost apprend à retrouver ces comportements à partir des données.
 
-C’est acceptable parce que ton objectif est une V0 démonstrative, pas un produit agricole certifié.
+### 9.6 Exemple de dataset final
 
-## 8. Base de données SQLite
+```csv
+culture,saison,type_sol,irrigation,humidite_sol,temp_actuelle,temp_min_7j,temp_moyenne_7j,pluie_7j,risque_gel_7j,water_usage,recommandation
+tomate,printemps,limoneux,manuel,55,20,13,18,1,0,80,viable
+tomate,printemps,sableux,manuel,45,17,7,13,1,0,60,attendre
+tomate,printemps,limoneux,goutte_a_goutte,60,18,2,11,1,1,90,non_viable
+tomate,ete,limoneux,manuel,20,34,22,29,0,0,120,attendre
+```
 
-### 8.1 Pourquoi SQLite ?
+### 9.7 Évaluation du modèle
 
-SQLite est suffisant pour la V0 parce que :
+Pour vérifier que le modèle fonctionne, il faudra mesurer :
+
+- accuracy ;
+- precision ;
+- recall ;
+- matrice de confusion ;
+- score de confiance moyen ;
+- cohérence des prédictions sur des cas tests.
+
+Le but n’est pas d’avoir un modèle parfait, mais de montrer que la logique prédictive fonctionne.
+
+---
+
+## 10. IoT — Évolution future
+
+### 10.1 Rôle de l’IoT
+
+L’IoT n’est pas obligatoire dans la V0, mais il est important comme évolution.
+
+Les capteurs permettront de récupérer des données réelles directement dans le potager de l’EHPAD.
+
+### 10.2 Données IoT possibles
+
+| Capteur | Donnée récupérée | Utilité |
+|---|---|---|
+| Capteur humidité sol | humidité du sol | Savoir si le sol est trop sec |
+| Capteur température air | température réelle | Comparer météo et terrain |
+| Capteur température sol | température du sol | Important pour plantation |
+| Capteur luminosité | exposition solaire | Vérifier les conditions de croissance |
+| Capteur niveau eau | consommation d’eau | Suivre l’arrosage |
+
+### 10.3 Architecture IoT future
 
 ```text
-- pas besoin d’installer un serveur de base de données
-- facile à intégrer dans FastAPI
-- parfait pour stocker un historique simple
-- très léger
+Capteurs dans le potager
+      ↓
+Microcontrôleur type ESP32
+      ↓
+MQTT ou HTTP
+      ↓
+Azure IoT Hub ou API FastAPI
+      ↓
+Base de données
+      ↓
+Modèle XGBoost
+      ↓
+Dashboard
 ```
 
-### 8.2 Tables recommandées
+### 10.4 Intérêt pour le modèle
+
+Avec l’IoT, le modèle ne dépend plus seulement de données météo générales.
+
+Il peut utiliser des données locales :
+
+- température réelle du site ;
+- humidité réelle du sol ;
+- luminosité réelle ;
+- historique des conditions du potager.
+
+Cela rend les prédictions plus proches de la réalité de l’EHPAD.
+
+---
+
+## 11. Base de données — SQLite
+
+### 11.1 Pourquoi SQLite ?
+
+SQLite est suffisant pour une V0 car :
+
+- simple à installer ;
+- pas besoin de serveur de base de données ;
+- facile à utiliser avec FastAPI ;
+- suffisant pour stocker un historique simple ;
+- léger pour un projet étudiant.
+
+### 11.2 Tables prévues
 
 #### Table `predictions`
 
-| Champ           | Type     | Rôle                 |
-| --------------- | -------- | -------------------- |
-| id              | integer  | Identifiant          |
-| created_at      | datetime | Date de prédiction   |
-| location        | text     | Localisation         |
-| mois            | integer  | Mois                 |
-| temp_aujourdhui | float    | Température actuelle |
-| temp_min_7j     | float    | Température minimale |
-| temp_moyenne_7j | float    | Température moyenne  |
-| pluie_7j        | integer  | Pluie prévue         |
-| risque_gel_7j   | integer  | Risque de gel        |
-| humidite_sol    | float    | Humidité             |
-| recommandation  | text     | Résultat IA          |
-| explication     | text     | Explication affichée |
-| score_confiance | float    | Confiance du modèle  |
+| Champ | Type | Rôle |
+|---|---|---|
+| id | integer | Identifiant |
+| created_at | datetime | Date de prédiction |
+| location | text | Localisation approximative |
+| culture | text | Tomate |
+| saison | text | Saison |
+| type_sol | text | Type de sol |
+| irrigation | text | Type d’irrigation |
+| humidite_sol | float | Humidité du sol |
+| temp_actuelle | float | Température actuelle |
+| temp_min_7j | float | Température minimale prévue |
+| temp_moyenne_7j | float | Température moyenne prévue |
+| pluie_7j | integer | Pluie prévue |
+| risque_gel_7j | integer | Risque de gel |
+| water_usage | float | Eau utilisée ou estimée |
+| recommandation | text | Résultat du modèle |
+| score_confiance | float | Confiance du modèle |
+| explication | text | Explication affichée |
 
 #### Table `model_versions`
 
-| Champ        | Type     | Rôle                |
-| ------------ | -------- | ------------------- |
-| id           | integer  | Identifiant         |
-| version      | text     | Version du modèle   |
-| trained_at   | datetime | Date d’entraînement |
-| dataset_name | text     | Nom du dataset      |
-| accuracy     | float    | Score du modèle     |
+| Champ | Type | Rôle |
+|---|---|---|
+| id | integer | Identifiant |
+| version | text | Version du modèle |
+| trained_at | datetime | Date d’entraînement |
+| dataset_name | text | Dataset utilisé |
+| accuracy | float | Score principal |
+| notes | text | Commentaires |
 
-## 9. Réseau, déploiement et sécurité
+---
 
-### 9.1 Architecture recommandée pour la V0
+## 12. Docker et déploiement
 
-Pour ton cas, je recommande de ne pas partir directement sur une VM.
+### 12.1 Conteneurs prévus
 
-Le plus propre :
-
-```text
-Frontend container
-Backend container
-SQLite volume
-Reverse proxy optionnel
-```
-
-En local :
-
-```text
-Docker Compose
-```
-
-Sur Azure :
-
-```text
-Azure Container Apps
-ou
-Azure App Service for Containers
-```
-
-Azure Container Apps recommande notamment l’usage des identités managées pour accéder aux ressources Azure sans gérer manuellement des mots de passe ou clés.  Azure documente aussi la sécurisation réseau des Container Apps avec des réseaux virtuels, NSG et règles de trafic entrant/sortant.
-
-### 9.2 Est-ce qu’il faut une VM ?
-
-Pour la V0 : **non obligatoire**.
-
-Une VM sert si tu veux tout gérer toi-même :
-
-```text
-- Linux
-- Docker
-- Nginx
-- certificats SSL
-- firewall
-- mises à jour
-- monitoring
-```
-
-Mais pour un projet étudiant, c’est plus lourd.
-
-Tu peux quand même l’aborder dans le CDC comme **option d’évolution**.
-
-### 9.3 Architecture avec VM si demandée
-
-```text
-Internet
-   ↓
-Nginx reverse proxy
-   ↓
-Frontend container Next.js
-   ↓
-Backend container FastAPI
-   ↓
-SQLite volume
-```
-
-Sur la VM, il faudrait :
-
-```text
-- Ubuntu Server
-- Docker + Docker Compose
-- Nginx
-- Certbot pour HTTPS
-- UFW firewall
-- ports ouverts : 80 et 443 uniquement
-- port 22 SSH limité
-- fail2ban
-- sauvegarde régulière de SQLite
-```
-
-### 9.4 Sécurité minimale
-
-| Élément             | Mesure                                          |
-| ------------------- | ----------------------------------------------- |
-| HTTPS               | Obligatoire si déployé en ligne                 |
-| API                 | CORS limité au domaine frontend                 |
-| Variables sensibles | `.env`, jamais dans Git                         |
-| Authentification    | Pas obligatoire en V0, mais recommandée ensuite |
-| Logs                | Ne pas stocker de données personnelles inutiles |
-| SQLite              | Sauvegarde régulière                            |
-| Docker              | Images légères, pas de secrets dans l’image     |
-| Réseau              | Backend non exposé directement si possible      |
-| Azure               | Managed Identity si services Azure              |
-| RGPD                | Limiter les données collectées                  |
-
-### 9.5 RGPD
-
-Ton app ne doit pas collecter de données personnelles inutiles.
-
-Pour la V0, tu peux stocker :
-
-```text
-- localisation approximative de l’EHPAD
-- données météo
-- prédictions
-```
-
-Évite de stocker :
-
-```text
-- noms des résidents
-- données médicales
-- informations personnelles du personnel
-```
-
-Tu peux écrire :
-
-> La V0 limite la collecte de données aux informations nécessaires à la prédiction : localisation approximative, météo, température et historique des recommandations. Aucune donnée médicale ou nominative sur les résidents n’est collectée.
-
-## 10. Docker
-
-### 10.1 Services Docker
-
-Tu peux prévoir 2 containers :
+Le projet peut être lancé avec deux conteneurs :
 
 ```text
 frontend
 backend
 ```
 
-Et un volume :
+Et un volume pour la base SQLite :
 
 ```text
 sqlite_data
 ```
 
-### 10.2 Exemple `docker-compose.yml`
+### 12.2 Exemple de `docker-compose.yml`
 
 ```yaml
 services:
@@ -559,82 +626,223 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/data:/app/data
+      - ./backend/models:/app/models
     environment:
       - DATABASE_URL=sqlite:///app/data/database.db
-      - MODEL_PATH=/app/model/decision_tree.pkl
+      - MODEL_PATH=/app/models/xgboost_tomate.pkl
 ```
 
-## 11. Fonctionnement complet de la prédiction
+### 12.3 Déploiement local
+
+Commande attendue :
+
+```bash
+docker compose up --build
+```
+
+Le frontend sera disponible sur :
+
+```text
+http://localhost:3000
+```
+
+L’API sera disponible sur :
+
+```text
+http://localhost:8000
+```
+
+---
+
+## 13. Réseau, cloud et sécurité
+
+### 13.1 Déploiement recommandé
+
+Pour une V0, il n’est pas obligatoire d’utiliser une VM.
+
+Le plus simple :
+
+```text
+Docker local
+ou
+Azure Container Apps / App Service for Containers
+```
+
+Une VM peut être envisagée si l’équipe veut tout gérer manuellement.
+
+### 13.2 Architecture avec VM si nécessaire
+
+```text
+Internet
+   ↓
+Nginx reverse proxy
+   ↓
+Frontend Next.js container
+   ↓
+Backend FastAPI container
+   ↓
+SQLite volume
+```
+
+Sur la VM, il faudra prévoir :
+
+- Ubuntu Server ;
+- Docker ;
+- Docker Compose ;
+- Nginx ;
+- certificat HTTPS ;
+- firewall ;
+- ports 80 et 443 ouverts ;
+- port SSH limité ;
+- sauvegarde de la base SQLite.
+
+### 13.3 Sécurité minimale
+
+| Élément | Mesure |
+|---|---|
+| HTTPS | Obligatoire si déployé en ligne |
+| API | CORS limité au frontend |
+| Secrets | Variables dans `.env`, jamais dans Git |
+| Docker | Pas de secrets dans les images |
+| Backend | Ne pas exposer directement si possible |
+| SQLite | Sauvegardes régulières |
+| Authentification | Optionnelle en V0, utile en V1 |
+| Logs | Ne pas stocker de données personnelles inutiles |
+| Azure | Managed Identity si services Azure utilisés |
+| RGPD | Collecte minimale |
+
+### 13.4 RGPD
+
+La V0 ne doit pas collecter de données personnelles inutiles.
+
+Données autorisées :
+
+- localisation approximative de l’EHPAD ;
+- données météo ;
+- données agricoles ;
+- prédictions ;
+- historique technique.
+
+Données à éviter :
+
+- nom des résidents ;
+- données médicales ;
+- données personnelles du personnel ;
+- informations sensibles sans utilité technique.
+
+Phrase à intégrer :
+
+> La V0 limite la collecte de données aux informations nécessaires à la prédiction. Aucune donnée médicale ou nominative sur les résidents n’est collectée.
+
+---
+
+## 14. Fonctionnement complet de la prédiction
 
 ```text
 1. L’utilisateur ouvre le dashboard.
-2. Il choisit la localisation de l’EHPAD.
-3. Le frontend appelle le backend.
-4. Le backend récupère la météo sur 7 jours ou utilise les données saisies.
-5. Le backend calcule :
-   - température minimale sur 7 jours
-   - température moyenne sur 7 jours
-   - pluie prévue
-   - risque de gel
-6. Le backend envoie ces variables au modèle IA.
-7. Le modèle retourne :
-   - planter
-   - attendre
-   - conditions défavorables
-8. Le backend génère une explication simple.
-9. Le résultat est stocké dans SQLite.
-10. Le frontend affiche la recommandation.
+2. Il renseigne ou confirme la localisation de l’EHPAD.
+3. Le frontend appelle l’API FastAPI.
+4. Le backend récupère ou reçoit les données météo.
+5. Le backend calcule les variables utiles :
+   - température minimale sur 7 jours ;
+   - température moyenne sur 7 jours ;
+   - pluie prévue ;
+   - risque de gel.
+6. Le backend ajoute les données agricoles :
+   - type de sol ;
+   - irrigation ;
+   - humidité du sol ;
+   - culture.
+7. Les données sont envoyées au modèle XGBoost.
+8. Le modèle prédit : viable, attendre ou non_viable.
+9. Le backend récupère le score de confiance.
+10. Le backend génère une explication simple.
+11. Le résultat est stocké dans SQLite.
+12. Le dashboard affiche la recommandation.
 ```
 
-## 12. Critères de réussite de la V0
+---
 
-| Critère                        | Objectif                                 |
-| ------------------------------ | ---------------------------------------- |
-| Le dashboard fonctionne        | L’utilisateur peut lancer une prédiction |
-| Le backend répond              | API `/predict` opérationnelle            |
-| Le modèle IA fonctionne        | Retourne une des 3 classes               |
-| L’explication est claire       | Le personnel comprend pourquoi           |
-| L’historique fonctionne        | Les anciennes prédictions sont visibles  |
-| Docker fonctionne              | Projet lançable avec une commande        |
-| Données météo prises en compte | Au minimum météo simulée ou saisie       |
-| Risque de gel géré             | Si gel prévu, la plantation est bloquée  |
+## 15. Critères de réussite de la V0
 
-## 13. Version V0 vs évolution
+| Critère | Objectif |
+|---|---|
+| Dashboard fonctionnel | L’utilisateur peut lancer une prédiction |
+| API fonctionnelle | `/predict` répond correctement |
+| Modèle XGBoost intégré | Le modèle retourne une classe |
+| Recommandation claire | `viable`, `attendre`, `non_viable` |
+| Explication affichée | Le personnel comprend la recommandation |
+| Historique disponible | Les prédictions sont sauvegardées |
+| Docker fonctionnel | Le projet se lance avec une commande |
+| Données météo prises en compte | Température, pluie, gel |
+| Dataset exploitable | Dataset agricole enrichi météo |
+| Sécurité minimale | `.env`, CORS, pas de données sensibles |
 
-### V0
+---
+
+## 16. Risques techniques
+
+| Risque | Impact | Solution |
+|---|---|---|
+| Dataset pas parfaitement adapté | Modèle moins fiable | Créer un dataset enrichi météo + règles tomate |
+| Modèle trop complexe | Perte de temps | Garder XGBoost avec peu de variables au début |
+| API météo indisponible | Prédiction impossible | Prévoir une saisie manuelle en secours |
+| Trop de fonctionnalités | V0 non terminée | Se concentrer uniquement sur la tomate |
+| IoT trop long à intégrer | Retard projet | Garder l’IoT en évolution future |
+| Interface trop complexe | Personnel perdu | Dashboard simple avec peu d’actions |
+| Mauvaise interprétation de l’IA | Manque de confiance | Afficher une explication claire |
+| Données personnelles inutiles | Risque RGPD | Ne collecter aucune donnée nominative |
+
+---
+
+## 17. V0 vs évolutions futures
+
+### 17.1 V0
 
 ```text
 - tomate uniquement
-- arbre de décision simple
-- dataset maison ou semi-simulé
-- SQLite
+- modèle XGBoost Classifier
+- dataset agricole enrichi météo
+- météo Open-Meteo ou saisie manuelle
 - dashboard simple
-- météo saisie manuellement ou Open-Meteo
+- FastAPI
+- SQLite
 - Docker local
+- historique des prédictions
 ```
 
-### Version future
+### 17.2 V1 / évolutions
 
 ```text
 - plusieurs légumes
-- vraie API météo automatique
+- vraie connexion IoT
+- capteurs humidité sol / température / luminosité
+- Azure IoT Hub
 - PostgreSQL
 - authentification
-- capteurs humidité/température
-- alertes email
-- recommandation d’arrosage
-- dashboard plus complet
-- hébergement cloud Azure
+- alertes email ou notifications
+- conseil d’arrosage
+- prédiction de rendement
+- reconnaissance d’image des maladies
+- dashboard avancé
 ```
 
-## 14. Phrase propre pour ton dossier
+---
 
-Tu peux mettre ça :
+## 18. Phrase de synthèse pour le dossier
 
-> La solution technique repose sur une architecture web simple et containerisée. Le frontend est développé avec Next.js et Tailwind CSS afin de proposer un dashboard clair au personnel de l’EHPAD. Le backend est développé avec FastAPI en Python, car il permet de créer facilement une API et d’intégrer un modèle d’intelligence artificielle.
->
-> L’IA prédictive repose sur un arbre de décision entraîné avec un dataset météo et agronomique adapté à la culture de la tomate. Le modèle prend en compte la période de plantation, la température actuelle, les prévisions des prochains jours, la température minimale prévue, la pluie, l’humidité du sol et le risque de gel. Il retourne une recommandation simple : planter maintenant, attendre quelques jours ou conditions défavorables.
->
-> Pour la V0, SQLite est utilisé comme base de données afin de stocker l’historique des prédictions. Le projet est déployable avec Docker, ce qui facilite les tests, le lancement local et une future mise en production sur Azure. La solution limite les données collectées afin de rester simple et conforme au RGPD.
+La solution technique repose sur une architecture web simple et containerisée. Le frontend est développé avec Next.js et Tailwind CSS afin de proposer un dashboard clair au personnel de l’EHPAD. Le backend est développé avec FastAPI en Python, car il permet d’intégrer facilement une API, une base SQLite et un modèle d’intelligence artificielle.
 
-Mon conseil : pour ton oral, ne dis pas “on va entraîner un gros modèle”. Dis plutôt : **“on fait une IA prédictive légère, explicable, basée sur un arbre de décision et des données météo sur 7 jours.”** Ça fait beaucoup plus sérieux et faisable.
+La partie IA repose sur un modèle XGBoost Classifier. Ce modèle prédictif analyse plusieurs données agricoles et météo afin d’estimer si une plantation de tomates est viable, à attendre ou non viable. Pour la V0, le modèle est entraîné à partir d’un dataset agricole enrichi avec des données météo. Dans une version future, des capteurs IoT installés sur le site permettront d’ajouter des données plus précises comme l’humidité du sol, la température locale et la luminosité.
+
+Le projet est déployable avec Docker, ce qui facilite les tests, le lancement local et une future mise en production sur Azure. La solution limite les données collectées aux informations nécessaires à la prédiction, sans données personnelles ou médicales liées aux résidents.
+
+---
+
+## 19. Résumé court pour l’oral
+
+Pour la V0, nous développons une application web qui aide un EHPAD à savoir si les conditions sont favorables pour planter des tomates. Le frontend est fait en Next.js avec Tailwind, le backend en FastAPI, et les prédictions sont stockées dans SQLite.
+
+La partie IA utilise XGBoost, un modèle de classification prédictive. Il analyse des données comme la saison, la météo, le risque de gel, le type de sol, l’irrigation et l’humidité du sol. Le modèle prédit ensuite une classe : viable, attendre ou non viable.
+
+Dans une version future, des capteurs IoT pourront être ajoutés dans le potager pour récupérer des données réelles directement sur site. Cela permettra d’améliorer la précision des prédictions.

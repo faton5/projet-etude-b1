@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background: #f7f1e6;
+  color: #18201b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(216, 71, 39, 0.12), transparent 28rem),
+    linear-gradient(135deg, #f7f1e6 0%, #eef3e3 48%, #f3eadb 100%);
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.dashboard-grid {
+  background-image:
+    linear-gradient(rgba(47, 111, 78, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 111, 78, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-ink outline-none transition focus:border-leaf focus:ring-2 focus:ring-leaf/20;
+  }
+}
