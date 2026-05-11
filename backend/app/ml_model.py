@@ -5,6 +5,7 @@ from typing import Any
 
 import joblib
 
+from app.config import get_settings
 from app.schemas import PredictionRequest
 
 
@@ -36,7 +37,7 @@ def default_model_path() -> Path:
 
 
 def get_model_path() -> Path:
-    return Path(os.getenv("MODEL_PATH", str(default_model_path())))
+    return get_settings().model_path or Path(os.getenv("MODEL_PATH", str(default_model_path())))
 
 
 def encode_payload(payload: PredictionRequest) -> list[float]:
@@ -117,6 +118,7 @@ def get_model_metadata() -> dict[str, Any]:
         "path": str(model_path),
         "metrics": bundle.get("metrics", {}),
         "trained_at": bundle.get("trained_at"),
+        "dataset_name": bundle.get("training_dataset"),
     }
 
 

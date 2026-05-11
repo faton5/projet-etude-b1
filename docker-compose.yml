@@ -1,6 +1,24 @@
 name: potager-ehpad
 
 services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+    ports:
+      - "127.0.0.1:${MQTT_PORT:-1883}:1883"
+    networks:
+      - potager_net
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-t", "$$SYS/broker/version", "-C", "1", "-W", "3"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -9,18 +27,26 @@ services:
       APP_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-info}
       POTAGER_DB_PATH: /data/potager.db
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       OPEN_METEO_BASE_URL: https://api.open-meteo.com/v1/forecast
       DEFAULT_LOCATION: ${DEFAULT_LOCATION:-Rennes}
       DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-48.1173}
       DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:--1.6778}
       MODEL_PATH: /app/models/xgboost_tomate.joblib
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      DEMO_MODE: ${DEMO_MODE:-true}
+      MQTT_ENABLED: ${MQTT_ENABLED:-true}
+      MQTT_HOST: ${MQTT_HOST:-mqtt}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_TOPIC_ROOT: ${MQTT_TOPIC_ROOT:-farm/tomato}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ./backend/app:/app/app
       - backend_data:/data
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      mqtt:
+        condition: service_healthy
     networks:
       - potager_net
     healthcheck:
@@ -29,6 +55,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+
+  iot-simulator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "iot_simulator.run_all"]
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mqtt}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_TOPIC_ROOT: ${MQTT_TOPIC_ROOT:-farm/tomato}
+      FARM_ID: ${FARM_ID:-farm_1}
+      DEFAULT_SOIL_TYPE: ${DEFAULT_SOIL_TYPE:-limoneux}
+      DEFAULT_IRRIGATION: ${DEFAULT_IRRIGATION:-goutte_a_goutte}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      OPEN_METEO_BASE_URL: https://api.open-meteo.com/v1/forecast
+      DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-48.1173}
+      DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:--1.6778}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mqtt:
+        condition: service_healthy
+    networks:
+      - potager_net
     restart: unless-stopped
 
   frontend:
@@ -60,3 +111,5 @@ volumes:
   backend_data:
   frontend_node_modules:
   frontend_next:
+  mqtt_data:
+  mqtt_log:

@@ -2,12 +2,14 @@
 
 import { FormEvent, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudSun, Send } from "lucide-react";
 import {
   createPrediction,
   formatRecommendation,
+  getWeather,
   type PredictionRequest,
-  type PredictionResponse
+  type PredictionResponse,
+  type WeatherResponse
 } from "@/lib/api";
 
 const initialPayload: PredictionRequest = {
@@ -28,8 +30,11 @@ const initialPayload: PredictionRequest = {
 export function PredictionForm() {
   const [payload, setPayload] = useState<PredictionRequest>(initialPayload);
   const [result, setResult] = useState<PredictionResponse | null>(null);
+  const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [error, setError] = useState("");
+  const [weatherError, setWeatherError] = useState("");
   const [pending, setPending] = useState(false);
+  const [weatherPending, setWeatherPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,10 +52,65 @@ export function PredictionForm() {
     }
   }
 
+  async function onLoadWeather() {
+    setWeatherPending(true);
+    setWeatherError("");
+
+    try {
+      const forecast = await getWeather();
+      setWeather(forecast);
+      setPayload((current) => ({
+        ...current,
+        location: forecast.location,
+        temp_actuelle: forecast.temp_actuelle,
+        temp_min_7j: forecast.temp_min_7j,
+        temp_moyenne_7j: forecast.temp_moyenne_7j,
+        pluie_7j: forecast.pluie_7j,
+        risque_gel_7j: forecast.risque_gel_7j
+      }));
+    } catch {
+      setWeather(null);
+      setWeatherError("Meteo indisponible. Gardez la saisie manuelle.");
+    } finally {
+      setWeatherPending(false);
+    }
+  }
+
   return (
     <section className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
       <form onSubmit={onSubmit} className="rounded-lg border border-ink/10 bg-white/85 p-6 shadow-soft">
-        <h2 className="text-2xl font-bold text-ink">Nouvelle prediction</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-ink">Nouvelle prediction</h2>
+            <p className="mt-1 text-sm text-ink/60">
+              Les champs meteo peuvent etre remplis automatiquement ou ajustes a la main.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onLoadWeather}
+            disabled={weatherPending}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-leaf/30 bg-white px-4 py-2 font-semibold text-leaf transition hover:border-leaf hover:bg-leaf hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <CloudSun size={18} aria-hidden="true" />
+            {weatherPending ? "Chargement" : "Charger meteo"}
+          </button>
+        </div>
+
+        {(weather || weatherError) && (
+          <div className="mt-4 rounded-md bg-cream p-4 text-sm text-ink/75">
+            {weather && (
+              <p>
+                Meteo Open-Meteo chargee pour {weather.location} : min {weather.temp_min_7j} C,
+                moyenne {weather.temp_moyenne_7j} C, pluie {weather.pluie_7j ? "oui" : "non"}.
+              </p>
+            )}
+            {weatherError && (
+              <p className="font-semibold text-tomato">{weatherError}</p>
+            )}
+          </div>
+        )}
+
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <Field label="Localisation">
             <input

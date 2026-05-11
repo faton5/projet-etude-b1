@@ -1,122 +1,220 @@
 # Potager EHPAD - Tomate
 
-Application V0 pour aider le personnel d'un EHPAD a evaluer si les conditions sont favorables pour planter des tomates.
+Application V0 pour aider le personnel d'un EHPAD a savoir si les conditions sont favorables pour planter des tomates.
 
-La V0 cible un dashboard Next.js, une API FastAPI, un modele XGBoost de classification et un historique SQLite des predictions.
+La V0 combine un dashboard Next.js, une API FastAPI, un modele XGBoost, SQLite, Open-Meteo et une architecture IoT simulee avec MQTT/Mosquitto.
 
-## Stack prevue
+## Architecture
 
-- Frontend : Next.js avec Tailwind CSS
-- Backend : FastAPI
-- IA : XGBoost, pandas, scikit-learn
-- Base locale : SQLite
+```text
+Dashboard Next.js
+  -> API FastAPI
+  -> Open-Meteo
+  -> XGBoost
+  -> SQLite
+
+Capteurs Python simules
+  -> MQTT Mosquitto
+  -> FastAPI MQTT consumer
+  -> WebSocket /ws/iot
+  -> Dashboard live
+```
+
+## Stack
+
+- Frontend : Next.js, Tailwind CSS, lucide-react
+- Backend : FastAPI, Pydantic, paho-mqtt
+- IA : XGBoost, scikit-learn, pandas
+- Base : SQLite
 - Meteo : Open-Meteo
-- Conteneurisation : Docker Compose
+- IoT V0 : Mosquitto + simulateurs Python
+- Deploiement : Docker Compose, Azure VM ou Azure Container Apps plus tard
 
 ## Structure
 
 ```text
-.
-+-- backend/          # API FastAPI, logique de prediction, SQLite, modele
-+-- frontend/         # Dashboard Next.js et pages utilisateur
-+-- CDC.md           # Cahier des charges technique
-+-- docker-compose.yml
-+-- .env.example
-+-- README.md
+backend/
+  app/                 # API, SQLite, MQTT consumer, meteo, prediction
+  iot_simulator/       # capteurs Python simules
+  models/              # modele XGBoost
+  tests/               # tests backend
+frontend/
+  app/                 # pages Next.js
+  components/          # composants UI
+  lib/                 # client API
+mosquitto/
+  mosquitto.conf       # config broker MQTT local
+CDC.md
+docker-compose.yml
+.env.example
 ```
 
 ## Configuration
-
-Creer un fichier `.env` local a partir de l'exemple :
 
 ```bash
 cp .env.example .env
 ```
 
-Le fichier `.env` reste local et ne doit pas etre commit.
+Variables importantes :
 
-## Lancement avec Docker
+- `DEMO_MODE=true` : garde des donnees affichables meme sans MQTT ou Internet.
+- `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- `INTERNAL_API_URL=http://backend:8000`
+- `POTAGER_DB_PATH=/data/potager.db`
+- `CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+- `OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast`
+- `MQTT_HOST=mqtt`
+- `MQTT_PORT=1883`
+- `MQTT_TOPIC_ROOT=farm/tomato`
+
+## Lancement Docker
+
+Demarrer toute la V0 :
 
 ```bash
 docker compose up --build
 ```
 
-Services attendus :
+Services :
 
 - Frontend : http://localhost:3000
 - Backend : http://localhost:8000
-- Documentation API : http://localhost:8000/docs
+- Docs API : http://localhost:8000/docs
+- MQTT local : `127.0.0.1:1883`
 
-Si ces ports sont deja utilises :
-
-```bash
-BACKEND_PORT=8001 FRONTEND_PORT=3001 \
-NEXT_PUBLIC_API_URL=http://localhost:8001 \
-CORS_ORIGINS=http://localhost:3001 \
-docker compose up --build
-```
-
-Arreter les services :
+Arreter :
 
 ```bash
 docker compose down
 ```
 
-## Lancement local sans Docker
+Remettre a zero les volumes locaux :
+
+```bash
+docker compose down -v
+```
+
+## Lancement local
 
 Backend :
 
 ```bash
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Frontend :
 
 ```bash
 cd frontend
-npm run dev
+npm ci
+npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-## Commandes utiles
-
-```bash
-docker compose up --build
-docker compose down
-cd backend && pytest
-cd backend && .venv/bin/python scripts/train_model.py
-cd frontend && npm test
-```
-
-## IA predictive
-
-Le backend charge un modele XGBoost depuis `backend/models/xgboost_tomate.joblib`.
-Le modele classe chaque demande en `viable`, `attendre` ou `non_viable`, puis l'API
-ajoute une explication simple et les facteurs importants. Si le fichier modele est
-absent, l'API repasse automatiquement sur les regles metier V0.
-
-Pour recreer le modele :
+Simulateurs IoT, avec un broker MQTT deja lance :
 
 ```bash
 cd backend
-.venv/bin/python scripts/train_model.py
+.\.venv\Scripts\python.exe -m iot_simulator.run_all
 ```
 
-## Variables principales
+Capteurs separes :
 
-Les variables disponibles sont documentees dans `.env.example`.
+```bash
+.\.venv\Scripts\python.exe -m iot_simulator.soil_sensor
+.\.venv\Scripts\python.exe -m iot_simulator.irrigation_sensor
+.\.venv\Scripts\python.exe -m iot_simulator.water_usage_sensor
+```
 
-Les valeurs importantes pour la V0 sont :
+## Mode demo
 
-- `NEXT_PUBLIC_API_URL` : URL publique du backend cote navigateur.
-- `INTERNAL_API_URL` : URL interne du backend depuis le conteneur frontend.
-- `POTAGER_DB_PATH` : fichier SQLite utilise par le backend actuel.
-- `DATABASE_URL` : URL SQLite reservee aux integrations futures.
-- `CORS_ORIGINS` : origines autorisees pour appeler l'API.
-- `OPEN_METEO_BASE_URL` : endpoint Open-Meteo.
+`DEMO_MODE=true` permet de presenter le projet meme si :
 
-## Notes de contribution
+- Open-Meteo est indisponible ;
+- Mosquitto n'est pas lance ;
+- aucun message MQTT n'a encore ete recu.
 
-- Ne pas committer `.env`, bases SQLite runtime, environnements virtuels, `node_modules`, builds ou artefacts de modele lourds.
-- Garder le vocabulaire metier du cahier des charges : `prediction`, `weather`, `soil`, `recommendation`, `history`.
-- Documenter toute nouvelle commande de build, test ou developpement dans ce README.
+Le backend genere alors des donnees meteo et IoT de secours. Ce mode ne remplace pas le flux MQTT reel, il evite seulement une demo vide.
+
+## MQTT
+
+Topics :
+
+- `farm/tomato/soil`
+- `farm/tomato/irrigation`
+- `farm/tomato/water_usage`
+
+Ecouter les messages :
+
+```bash
+mosquitto_sub -h localhost -p 1883 -t "farm/tomato/#" -v
+```
+
+Publier un message de test :
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t "farm/tomato/soil" -m "{\"sensor_id\":\"soil_sensor_1\",\"farm_id\":\"farm_1\",\"humidity\":43.2,\"timestamp\":\"2026-05-11T18:00:00Z\"}"
+```
+
+Le port MQTT est expose seulement sur `127.0.0.1` dans Docker Compose. En production, ne pas exposer `1883` publiquement sans authentification/TLS.
+
+## Endpoints API
+
+- `GET /health` : statut API, MQTT, modele, SQLite, WebSocket.
+- `GET /weather` : meteo Open-Meteo ou fallback demo.
+- `POST /predict` : prediction avec payload complet.
+- `POST /predict/iot` : prediction avec meteo + dernieres donnees MQTT.
+- `GET /iot/live` : dernieres donnees IoT.
+- `WS /ws/iot` : flux IoT live.
+- `GET /history` : historique des predictions.
+- `GET /model/info` : version et metriques du modele.
+
+## Tests et verification
+
+Backend :
+
+```bash
+cd backend
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Frontend :
+
+```bash
+cd frontend
+npm test
+npm run build
+```
+
+Docker :
+
+```bash
+docker compose config
+docker compose up --build
+```
+
+## Azure
+
+Option simple pour une soutenance ou une V0 :
+
+- Azure VM Ubuntu + Docker Compose.
+- Ports publics : 80/443 via reverse proxy.
+- Ne pas exposer MQTT publiquement.
+- SQLite sur volume persistant.
+
+Commandes utiles sur VM :
+
+```bash
+docker compose pull
+docker compose up -d --build
+docker compose logs -f backend
+docker compose ps
+```
+
+## Limites V0
+
+- Le modele est entraine sur donnees synthetiques realistes, pas sur donnees terrain validees.
+- Les capteurs sont simules ; de vrais ESP32 pourront publier les memes payloads MQTT plus tard.
+- Pas de comptes utilisateurs, PostgreSQL, Kubernetes ou Azure IoT Hub en V0.

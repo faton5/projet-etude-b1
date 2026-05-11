@@ -1,18 +1,14 @@
 import json
-import os
 import sqlite3
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-from app.schemas import HistoryItem, PredictionRequest, PredictionResponse, PredictionResult
+from app.config import get_settings
+from app.schemas import HistoryItem, ModelVersion, PredictionRequest, PredictionResponse, PredictionResult
 
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "potager.db"
-
-
-def get_db_path() -> Path:
-    return Path(os.getenv("POTAGER_DB_PATH", str(DEFAULT_DB_PATH)))
+def get_db_path():
+    return get_settings().db_path
 
 
 def get_connection() -> sqlite3.Connection:
@@ -49,6 +45,42 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS iot_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                sensor_id TEXT NOT NULL,
+                farm_id TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS model_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version TEXT NOT NULL UNIQUE,
+                trained_at TEXT,
+                dataset_name TEXT,
+                accuracy REAL,
+                f1_macro REAL,
+                notes TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def check_database() -> bool:
+    try:
+        with get_connection() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return True
+    except sqlite3.Error:
+        return False
 
 
 def save_prediction(
@@ -139,6 +171,102 @@ def get_prediction(prediction_id: int) -> HistoryItem | None:
     if row is None:
         return None
     return _row_to_history_item(row)
+
+
+def save_iot_reading(
+    topic: str,
+    sensor_id: str,
+    farm_id: str,
+    observed_at: datetime,
+    payload: dict[str, Any],
+) -> None:
+    created_at = datetime.now(UTC)
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO iot_readings (
+                created_at,
+                topic,
+                sensor_id,
+                farm_id,
+                observed_at,
+                payload
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                created_at.isoformat(),
+                topic,
+                sensor_id,
+                farm_id,
+                observed_at.isoformat(),
+                json.dumps(payload),
+            ),
+        )
+
+
+def upsert_model_version(
+    version: str,
+    trained_at: str | None,
+    dataset_name: str | None,
+    accuracy: float | None,
+    f1_macro: float | None,
+    notes: str | None,
+) -> None:
+    created_at = datetime.now(UTC).isoformat()
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO model_versions (
+                version,
+                trained_at,
+                dataset_name,
+                accuracy,
+                f1_macro,
+                notes,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(version) DO UPDATE SET
+                trained_at = excluded.trained_at,
+                dataset_name = excluded.dataset_name,
+                accuracy = excluded.accuracy,
+                f1_macro = excluded.f1_macro,
+                notes = excluded.notes
+            """,
+            (
+                version,
+                trained_at,
+                dataset_name,
+                accuracy,
+                f1_macro,
+                notes,
+                created_at,
+            ),
+        )
+
+
+def get_latest_model_version() -> ModelVersion | None:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM model_versions
+            ORDER BY datetime(created_at) DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    if row is None:
+        return None
+    data = dict(row)
+    return ModelVersion(
+        version=data["version"],
+        trained_at=datetime.fromisoformat(data["trained_at"]) if data["trained_at"] else None,
+        dataset_name=data["dataset_name"],
+        accuracy=data["accuracy"],
+        f1_macro=data["f1_macro"],
+        notes=data["notes"],
+    )
 
 
 def _row_to_history_item(row: sqlite3.Row) -> HistoryItem:

@@ -25,7 +25,7 @@ L’application doit analyser plusieurs données :
 - humidité du sol ;
 - type de sol ;
 - type d’irrigation ;
-- données IoT dans une version future.
+- données IoT simulées pour l’humidité du sol, l’irrigation et l’eau utilisée.
 
 À partir de ces données, le modèle prédictif doit retourner une recommandation simple :
 
@@ -54,7 +54,8 @@ La V0 doit permettre de :
 
 - afficher un dashboard simple ;
 - lancer une prédiction de viabilité pour la tomate ;
-- prendre en compte des données météo et agricoles ;
+- prendre en compte des données météo Open-Meteo et agricoles ;
+- prendre en compte des données IoT simulées via MQTT ;
 - utiliser un modèle XGBoost pour prédire une classe ;
 - afficher une recommandation claire ;
 - afficher une explication de la recommandation ;
@@ -72,11 +73,29 @@ Elle ne gère pas encore :
 - une vraie automatisation complète de l’arrosage ;
 - une prédiction de rendement précise ;
 - une reconnaissance d’image des maladies ;
-- une connexion IoT obligatoire ;
+- des capteurs physiques réels ;
+- Azure IoT Hub ;
 - un système complexe de comptes utilisateurs ;
 - une base de données lourde type PostgreSQL.
 
 Ces éléments peuvent être prévus dans les évolutions futures.
+
+### 3.3 État d’avancement actuel
+
+| Élément | État | Commentaire |
+|---|---|---|
+| Dashboard Next.js | Fait | Vue principale, historique et panneau IoT live |
+| Formulaire de prédiction | Fait | Mode manuel avec préremplissage météo |
+| API FastAPI | Fait | Routes principales implémentées |
+| Météo Open-Meteo | Fait | Température actuelle, prévisions 7 jours, pluie, gel |
+| Modèle XGBoost | Fait | Modèle chargé et utilisé par l’API |
+| Historique SQLite | Fait | Prédictions persistées |
+| IoT simulé MQTT | Fait | Mosquitto, simulateurs Python, consumer FastAPI |
+| WebSocket IoT live | Fait | Flux `/ws/iot` pour le dashboard |
+| Docker Compose | Configuré | Configuration valide, exécution complète à valider avec Docker Desktop |
+| Dataset réel agricole | Partiel | Modèle basé sur données synthétiques réalistes, pas sur données terrain réelles |
+| Capteurs physiques ESP32 | Non fait | Prévu en V1 sans changer les topics MQTT |
+| Table `model_versions` | Non fait | Prévue mais pas encore implémentée |
 
 ---
 
@@ -91,9 +110,10 @@ Ces éléments peuvent être prévus dans les évolutions futures.
 | Préparation des données | pandas, scikit-learn | Nettoyage et transformation des données |
 | Base de données | SQLite | Historique des prédictions pour la V0 |
 | Données météo | Open-Meteo | Prévisions et météo historique |
+| IoT simulé | MQTT, Mosquitto, paho-mqtt | Simulation de capteurs et ingestion live |
 | Conteneurisation | Docker / Docker Compose | Lancement simple du projet |
 | Cloud | Azure étudiant | Hébergement possible |
-| IoT futur | Azure IoT Hub ou API dédiée | Réception des données capteurs |
+| IoT futur | ESP32, Azure IoT Hub éventuel | Remplacement des simulateurs par de vrais capteurs |
 
 ---
 
@@ -106,7 +126,11 @@ Dashboard Next.js
       ↓
 API FastAPI
       ↓
-Récupération météo / saisie manuelle
+Récupération météo Open-Meteo
+      ↓
+MQTT consumer FastAPI
+      ↑
+Mosquitto MQTT ← capteurs Python simulés
       ↓
 Préparation des données
       ↓
@@ -124,6 +148,7 @@ Le frontend sert à afficher les informations et à envoyer les demandes de pré
 Le backend contient la logique principale :
 
 - récupérer les données météo ;
+- consommer les données IoT simulées depuis MQTT ;
 - préparer les variables nécessaires au modèle ;
 - appeler le modèle XGBoost ;
 - générer une explication ;
@@ -172,6 +197,7 @@ Le dashboard doit afficher :
 - le score de confiance ;
 - l’explication simple ;
 - les principales données météo ;
+- les dernières données IoT simulées si disponibles ;
 - les principaux KPI.
 
 Exemple d’affichage :
@@ -194,6 +220,8 @@ Raison : la température minimale prévue est trop basse pour planter sans risqu
 | Température minimale prévue | Indicateur clé pour la tomate |
 | Risque de gel | Indicateur critique |
 | Humidité du sol | Important pour l’arrosage |
+| Consommation d’eau estimée | Suivre l’arrosage |
+| État MQTT | Vérifier si les données IoT live arrivent |
 | Score de confiance du modèle | Rendre la prédiction plus transparente |
 
 ### 6.5 Formulaire de prédiction
@@ -212,8 +240,15 @@ Le formulaire doit permettre de saisir ou récupérer :
 | Température moyenne sur 7 jours | nombre | 16 °C |
 | Pluie prévue | oui / non | oui |
 | Risque de gel | oui / non | non |
+| Eau utilisée | nombre | 80 L estimés |
 
-Dans la V0, certaines valeurs peuvent être saisies manuellement si l’API météo n’est pas encore totalement intégrée.
+Dans la V0 actuelle, les données météo peuvent être récupérées automatiquement depuis Open-Meteo. Les champs restent modifiables manuellement pour garder un mode secours.
+
+Les données locales du potager peuvent venir soit du formulaire, soit de l’architecture IoT simulée :
+
+- humidité du sol ;
+- type d’irrigation ;
+- consommation ou usage estimé de l’eau.
 
 ---
 
@@ -227,6 +262,7 @@ Il doit gérer :
 
 - les routes API ;
 - la récupération des données météo ;
+- la consommation des messages MQTT IoT simulés ;
 - la préparation des données ;
 - l’appel au modèle XGBoost ;
 - la création d’une explication ;
@@ -242,7 +278,10 @@ Il doit gérer :
 | `/history` | GET | Récupérer l’historique |
 | `/history/{id}` | GET | Voir une prédiction précise |
 | `/model/info` | GET | Voir les informations du modèle |
-| `/weather` | GET | Récupérer la météo si API intégrée |
+| `/weather` | GET | Récupérer la météo Open-Meteo |
+| `/iot/live` | GET | Récupérer les dernières données IoT reçues |
+| `/ws/iot` | WebSocket | Diffuser les données IoT live au dashboard |
+| `/predict/iot` | POST | Lancer une prédiction avec météo + IoT simulé |
 
 ### 7.3 Exemple de payload `/predict`
 
@@ -277,6 +316,30 @@ Il doit gérer :
   ]
 }
 ```
+
+### 7.5 Exemple de payload `/predict/iot`
+
+Le mode IoT demande moins de champs au frontend, car le backend complète les données avec Open-Meteo et les dernières valeurs MQTT reçues.
+
+```json
+{
+  "location": "Rennes",
+  "culture": "tomate",
+  "type_sol": "limoneux"
+}
+```
+
+Le backend complète automatiquement :
+
+- saison ;
+- température actuelle ;
+- température minimale sur 7 jours ;
+- température moyenne sur 7 jours ;
+- pluie prévue ;
+- risque de gel ;
+- humidité du sol IoT ;
+- irrigation IoT ;
+- eau utilisée IoT.
 
 ---
 
@@ -341,15 +404,15 @@ non_viable
 |---|---|---|
 | culture | texte | fixe : tomate |
 | saison | texte | date actuelle |
-| type_sol | texte | formulaire / dataset |
-| irrigation | texte | formulaire / dataset |
-| humidite_sol | nombre | saisie ou capteur futur |
-| temp_actuelle | nombre | météo ou capteur futur |
+| type_sol | texte | formulaire / configuration locale |
+| irrigation | texte | formulaire ou IoT simulé |
+| humidite_sol | nombre | saisie ou IoT simulé |
+| temp_actuelle | nombre | API météo Open-Meteo |
 | temp_min_7j | nombre | API météo |
 | temp_moyenne_7j | nombre | API météo |
 | pluie_7j | booléen | API météo |
 | risque_gel_7j | booléen | calcul backend |
-| water_usage | nombre | dataset / estimation / capteur futur |
+| water_usage | nombre | estimation ou IoT simulé |
 
 ### 8.6 Sortie du modèle
 
@@ -397,7 +460,7 @@ Le dataset final peut être construit avec :
 - un dataset agricole Kaggle ;
 - des données météo Open-Meteo ;
 - des règles agronomiques simples liées à la tomate ;
-- des données IoT dans une version future.
+- des données IoT simulées pour tester l’architecture.
 
 ### 9.3 Dataset agricole de base
 
@@ -439,7 +502,7 @@ pluie_7j
 risque_gel_7j
 ```
 
-Ces données peuvent venir d’Open-Meteo ou être simulées pour la V0.
+Ces données viennent d’Open-Meteo dans l’application actuelle. Elles peuvent aussi être simulées ou fixées dans les tests pour valider le backend sans dépendre du réseau.
 
 ### 9.5 Création de la colonne cible
 
@@ -488,45 +551,98 @@ Pour vérifier que le modèle fonctionne, il faudra mesurer :
 
 Le but n’est pas d’avoir un modèle parfait, mais de montrer que la logique prédictive fonctionne.
 
+État actuel : le modèle intégré est entraîné sur un dataset synthétique probabiliste réaliste. Ce choix est acceptable pour une V0 étudiante, mais il ne doit pas être présenté comme un modèle agronomique validé sur données terrain réelles.
+
 ---
 
-## 10. IoT — Évolution future
+## 10. IoT — Simulation V0 et évolution future
 
 ### 10.1 Rôle de l’IoT
 
-L’IoT n’est pas obligatoire dans la V0, mais il est important comme évolution.
+L’IoT physique n’est pas obligatoire dans la V0, mais l’architecture est maintenant simulée pour rendre le projet plus crédible techniquement.
 
-Les capteurs permettront de récupérer des données réelles directement dans le potager de l’EHPAD.
+La V0 ne dépend d’aucun capteur réel. Des scripts Python simulent les capteurs et publient des messages MQTT. Plus tard, ces scripts pourront être remplacés par de vrais ESP32 sans changer les topics ni le consumer FastAPI.
 
 ### 10.2 Données IoT possibles
 
 | Capteur | Donnée récupérée | Utilité |
 |---|---|---|
-| Capteur humidité sol | humidité du sol | Savoir si le sol est trop sec |
-| Capteur température air | température réelle | Comparer météo et terrain |
-| Capteur température sol | température du sol | Important pour plantation |
-| Capteur luminosité | exposition solaire | Vérifier les conditions de croissance |
-| Capteur niveau eau | consommation d’eau | Suivre l’arrosage |
+| Capteur humidité sol simulé | humidité du sol | Savoir si le sol est trop sec |
+| Capteur irrigation simulé | type d’irrigation, débit, état actif | Suivre l’arrosage |
+| Capteur eau simulé | consommation d’eau estimée | Suivre l’eau utilisée |
+| Capteur température air réel | température locale | Évolution future |
+| Capteur température sol réel | température du sol | Évolution future |
+| Capteur luminosité réel | exposition solaire | Évolution future |
 
-### 10.3 Architecture IoT future
+### 10.3 Architecture IoT simulée V0
 
 ```text
-Capteurs dans le potager
+Capteurs Python simulés
       ↓
-Microcontrôleur type ESP32
+MQTT
       ↓
-MQTT ou HTTP
+Broker Mosquitto
       ↓
-Azure IoT Hub ou API FastAPI
+FastAPI MQTT Consumer
       ↓
-Base de données
+Préparation des données
       ↓
 Modèle XGBoost
+      ↓
+SQLite
       ↓
 Dashboard
 ```
 
-### 10.4 Intérêt pour le modèle
+Topics MQTT utilisés :
+
+```text
+farm/tomato/soil
+farm/tomato/irrigation
+farm/tomato/water_usage
+```
+
+Payload exemple humidité sol :
+
+```json
+{
+  "sensor_id": "soil_sensor_1",
+  "farm_id": "farm_1",
+  "humidity": 43.2,
+  "timestamp": "2026-05-11T18:00:00Z"
+}
+```
+
+Payload exemple eau :
+
+```json
+{
+  "sensor_id": "water_sensor_1",
+  "farm_id": "farm_1",
+  "water_usage": 12.4,
+  "timestamp": "2026-05-11T18:00:00Z"
+}
+```
+
+### 10.4 Architecture IoT future avec vrais capteurs
+
+```text
+Capteurs dans le potager
+      ↓
+ESP32
+      ↓
+MQTT
+      ↓
+Mosquitto ou Azure IoT Hub
+      ↓
+FastAPI / service d’ingestion
+      ↓
+SQLite ou base cloud
+      ↓
+Dashboard
+```
+
+### 10.5 Intérêt pour le modèle
 
 Avec l’IoT, le modèle ne dépend plus seulement de données météo générales.
 
@@ -577,6 +693,18 @@ SQLite est suffisant pour une V0 car :
 | score_confiance | float | Confiance du modèle |
 | explication | text | Explication affichée |
 
+#### Table `iot_readings`
+
+| Champ | Type | Rôle |
+|---|---|---|
+| id | integer | Identifiant |
+| created_at | datetime | Date d’insertion |
+| topic | text | Topic MQTT reçu |
+| sensor_id | text | Identifiant du capteur simulé |
+| farm_id | text | Identifiant du potager |
+| observed_at | datetime | Timestamp envoyé par le capteur |
+| payload | text/json | Message MQTT brut |
+
 #### Table `model_versions`
 
 | Champ | Type | Rôle |
@@ -588,29 +716,40 @@ SQLite est suffisant pour une V0 car :
 | accuracy | float | Score principal |
 | notes | text | Commentaires |
 
+État actuel : `predictions` et `iot_readings` sont implémentées. `model_versions` reste prévue mais n’est pas encore implémentée.
+
 ---
 
 ## 12. Docker et déploiement
 
 ### 12.1 Conteneurs prévus
 
-Le projet peut être lancé avec deux conteneurs :
+Le projet peut être lancé avec plusieurs conteneurs simples :
 
 ```text
 frontend
 backend
+mqtt
+iot-simulator
 ```
 
-Et un volume pour la base SQLite :
+Et des volumes pour la base SQLite et les données MQTT :
 
 ```text
-sqlite_data
+backend_data
+mqtt_data
+mqtt_log
 ```
 
 ### 12.2 Exemple de `docker-compose.yml`
 
 ```yaml
 services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+
   frontend:
     build: ./frontend
     ports:
@@ -630,6 +769,13 @@ services:
     environment:
       - DATABASE_URL=sqlite:///app/data/database.db
       - MODEL_PATH=/app/models/xgboost_tomate.pkl
+      - MQTT_HOST=mqtt
+
+  iot-simulator:
+    build: ./backend
+    command: python -m iot_simulator.run_all
+    depends_on:
+      - mqtt
 ```
 
 ### 12.3 Déploiement local
@@ -651,6 +797,14 @@ L’API sera disponible sur :
 ```text
 http://localhost:8000
 ```
+
+Le broker MQTT sera disponible sur :
+
+```text
+localhost:1883
+```
+
+État actuel : la configuration Docker Compose est présente et valide. L’exécution complète `docker compose up --build` doit encore être validée sur une machine avec Docker Desktop lancé.
 
 ---
 
@@ -678,9 +832,11 @@ Internet
 Nginx reverse proxy
    ↓
 Frontend Next.js container
-   ↓
+      ↓
 Backend FastAPI container
-   ↓
+      ↓
+Mosquitto MQTT container
+      ↓
 SQLite volume
 ```
 
@@ -705,6 +861,7 @@ Sur la VM, il faudra prévoir :
 | Secrets | Variables dans `.env`, jamais dans Git |
 | Docker | Pas de secrets dans les images |
 | Backend | Ne pas exposer directement si possible |
+| MQTT | Ne pas exposer publiquement le port 1883 en production sans authentification |
 | SQLite | Sauvegardes régulières |
 | Authentification | Optionnelle en V0, utile en V1 |
 | Logs | Ne pas stocker de données personnelles inutiles |
@@ -720,6 +877,7 @@ Données autorisées :
 - localisation approximative de l’EHPAD ;
 - données météo ;
 - données agricoles ;
+- données IoT techniques du potager ;
 - prédictions ;
 - historique technique.
 
@@ -742,41 +900,45 @@ Phrase à intégrer :
 1. L’utilisateur ouvre le dashboard.
 2. Il renseigne ou confirme la localisation de l’EHPAD.
 3. Le frontend appelle l’API FastAPI.
-4. Le backend récupère ou reçoit les données météo.
+4. Le backend récupère les données météo Open-Meteo.
 5. Le backend calcule les variables utiles :
    - température minimale sur 7 jours ;
    - température moyenne sur 7 jours ;
    - pluie prévue ;
    - risque de gel.
-6. Le backend ajoute les données agricoles :
+6. Le backend ajoute les données agricoles et IoT :
    - type de sol ;
    - irrigation ;
    - humidité du sol ;
+   - eau utilisée ;
    - culture.
-7. Les données sont envoyées au modèle XGBoost.
-8. Le modèle prédit : viable, attendre ou non_viable.
-9. Le backend récupère le score de confiance.
-10. Le backend génère une explication simple.
-11. Le résultat est stocké dans SQLite.
-12. Le dashboard affiche la recommandation.
+7. Si le mode IoT est utilisé, les dernières valeurs MQTT sont récupérées depuis l’état live FastAPI.
+8. Les données sont envoyées au modèle XGBoost.
+9. Le modèle prédit : viable, attendre ou non_viable.
+10. Le backend récupère le score de confiance.
+11. Le backend génère une explication simple.
+12. Le résultat est stocké dans SQLite.
+13. Le dashboard affiche la recommandation.
 ```
 
 ---
 
 ## 15. Critères de réussite de la V0
 
-| Critère | Objectif |
-|---|---|
-| Dashboard fonctionnel | L’utilisateur peut lancer une prédiction |
-| API fonctionnelle | `/predict` répond correctement |
-| Modèle XGBoost intégré | Le modèle retourne une classe |
-| Recommandation claire | `viable`, `attendre`, `non_viable` |
-| Explication affichée | Le personnel comprend la recommandation |
-| Historique disponible | Les prédictions sont sauvegardées |
-| Docker fonctionnel | Le projet se lance avec une commande |
-| Données météo prises en compte | Température, pluie, gel |
-| Dataset exploitable | Dataset agricole enrichi météo |
-| Sécurité minimale | `.env`, CORS, pas de données sensibles |
+| Critère | Objectif | État actuel |
+|---|---|---|
+| Dashboard fonctionnel | L’utilisateur peut lancer une prédiction | Fait |
+| API fonctionnelle | `/predict` répond correctement | Fait |
+| Modèle XGBoost intégré | Le modèle retourne une classe | Fait |
+| Recommandation claire | `viable`, `attendre`, `non_viable` | Fait |
+| Explication affichée | Le personnel comprend la recommandation | Fait |
+| Historique disponible | Les prédictions sont sauvegardées | Fait |
+| Données météo prises en compte | Température, pluie, gel | Fait avec Open-Meteo |
+| IoT simulé | MQTT, capteurs simulés, live dashboard | Fait |
+| WebSocket live | Affichage temps réel des données IoT | Fait côté code |
+| Docker fonctionnel | Le projet se lance avec une commande | Configuré, runtime complet à valider |
+| Dataset exploitable | Dataset synthétique réaliste enrichi météo | Partiel, non validé terrain |
+| Sécurité minimale | `.env`, CORS, pas de données sensibles | Fait pour la V0 locale |
 
 ---
 
@@ -788,7 +950,9 @@ Phrase à intégrer :
 | Modèle trop complexe | Perte de temps | Garder XGBoost avec peu de variables au début |
 | API météo indisponible | Prédiction impossible | Prévoir une saisie manuelle en secours |
 | Trop de fonctionnalités | V0 non terminée | Se concentrer uniquement sur la tomate |
-| IoT trop long à intégrer | Retard projet | Garder l’IoT en évolution future |
+| IoT trop complexe | Retard projet | Garder Mosquitto + simulateurs simples, pas Azure IoT Hub en V0 |
+| Docker non validé en runtime complet | Démo fragile | Tester `docker compose up --build` avant soutenance |
+| MQTT exposé sans sécurité | Risque si déployé publiquement | Ne pas exposer 1883 sur Internet sans auth/TLS |
 | Interface trop complexe | Personnel perdu | Dashboard simple avec peu d’actions |
 | Mauvaise interprétation de l’IA | Manque de confiance | Afficher une explication claire |
 | Données personnelles inutiles | Risque RGPD | Ne collecter aucune donnée nominative |
@@ -802,12 +966,17 @@ Phrase à intégrer :
 ```text
 - tomate uniquement
 - modèle XGBoost Classifier
-- dataset agricole enrichi météo
-- météo Open-Meteo ou saisie manuelle
+- dataset synthétique réaliste enrichi météo
+- météo Open-Meteo avec saisie manuelle en secours
+- IoT simulé via MQTT / Mosquitto
+- simulateurs Python humidité sol / irrigation / eau
+- consumer MQTT FastAPI
+- endpoint /iot/live
+- WebSocket /ws/iot
 - dashboard simple
 - FastAPI
 - SQLite
-- Docker local
+- Docker Compose local
 - historique des prédictions
 ```
 
@@ -815,8 +984,8 @@ Phrase à intégrer :
 
 ```text
 - plusieurs légumes
-- vraie connexion IoT
-- capteurs humidité sol / température / luminosité
+- vrais capteurs ESP32
+- capteurs humidité sol / température / luminosité physiques
 - Azure IoT Hub
 - PostgreSQL
 - authentification
@@ -833,7 +1002,7 @@ Phrase à intégrer :
 
 La solution technique repose sur une architecture web simple et containerisée. Le frontend est développé avec Next.js et Tailwind CSS afin de proposer un dashboard clair au personnel de l’EHPAD. Le backend est développé avec FastAPI en Python, car il permet d’intégrer facilement une API, une base SQLite et un modèle d’intelligence artificielle.
 
-La partie IA repose sur un modèle XGBoost Classifier. Ce modèle prédictif analyse plusieurs données agricoles et météo afin d’estimer si une plantation de tomates est viable, à attendre ou non viable. Pour la V0, le modèle est entraîné à partir d’un dataset agricole enrichi avec des données météo. Dans une version future, des capteurs IoT installés sur le site permettront d’ajouter des données plus précises comme l’humidité du sol, la température locale et la luminosité.
+La partie IA repose sur un modèle XGBoost Classifier. Ce modèle prédictif analyse plusieurs données agricoles et météo afin d’estimer si une plantation de tomates est viable, à attendre ou non viable. Pour la V0, le modèle est entraîné à partir d’un dataset synthétique réaliste enrichi avec des données météo. L’architecture IoT est simulée avec MQTT, Mosquitto et des capteurs Python afin de préparer une future connexion à de vrais ESP32.
 
 Le projet est déployable avec Docker, ce qui facilite les tests, le lancement local et une future mise en production sur Azure. La solution limite les données collectées aux informations nécessaires à la prédiction, sans données personnelles ou médicales liées aux résidents.
 
@@ -845,4 +1014,4 @@ Pour la V0, nous développons une application web qui aide un EHPAD à savoir si
 
 La partie IA utilise XGBoost, un modèle de classification prédictive. Il analyse des données comme la saison, la météo, le risque de gel, le type de sol, l’irrigation et l’humidité du sol. Le modèle prédit ensuite une classe : viable, attendre ou non viable.
 
-Dans une version future, des capteurs IoT pourront être ajoutés dans le potager pour récupérer des données réelles directement sur site. Cela permettra d’améliorer la précision des prédictions.
+La V0 inclut aussi une architecture IoT simulée : des capteurs Python publient l’humidité du sol, l’irrigation et l’eau utilisée via MQTT. FastAPI consomme ces messages, les expose au dashboard et peut lancer une prédiction avec météo réelle + données IoT simulées. Dans une version future, ces simulateurs pourront être remplacés par de vrais capteurs ESP32.

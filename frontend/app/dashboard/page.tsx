@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Leaf, ThermometerSun } from "lucide-react";
+import { LiveIotPanel } from "@/components/LiveIotPanel";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
+import { SystemStatusPanel } from "@/components/SystemStatusPanel";
 import { formatRecommendation, getHistory, type HistoryItem } from "@/lib/api";
 
 export default async function DashboardPage() {
@@ -102,6 +104,10 @@ export default async function DashboardPage() {
           />
         </section>
       )}
+
+      <SystemStatusPanel />
+
+      <LiveIotPanel />
 
       <section className="rounded-lg border border-ink/10 bg-white/80 p-5 shadow-soft">
         <div className="flex items-center gap-3">
