@@ -11,13 +11,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
     confusion_matrix,
     f1_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
@@ -34,12 +35,12 @@ IRRIGATIONS = ["manuel", "goutte_a_goutte", "automatique", "aucun"]
 CLASS_INDEX = {label: index for index, label in enumerate(CLASS_LABELS)}
 
 
-def build_training_payloads(sample_count: int = 8000) -> list[PredictionRequest]:
+def build_training_payloads(sample_count: int = 15000) -> list[PredictionRequest]:
     rows = build_training_rows(sample_count=sample_count, seed=42)
     return [row["payload"] for row in rows]
 
 
-def build_training_rows(sample_count: int = 8000, seed: int = 42) -> list[dict[str, Any]]:
+def build_training_rows(sample_count: int = 15000, seed: int = 42) -> list[dict[str, Any]]:
     rng = random.Random(seed)
     rows: list[dict[str, Any]] = []
 
@@ -64,7 +65,7 @@ def target_for_payload(payload: PredictionRequest) -> int:
     return CLASS_INDEX[_most_likely_label(viability_score(payload, rng=None))]
 
 
-def train(output_path: Path, sample_count: int = 8000) -> dict[str, object]:
+def train(output_path: Path, sample_count: int = 15000) -> dict[str, object]:
     rows = build_training_rows(sample_count=sample_count)
     x = pd.DataFrame([encode_payload(row["payload"]) for row in rows], columns=FEATURE_COLUMNS)
     y = np.array([row["target"] for row in rows])
@@ -77,8 +78,9 @@ def train(output_path: Path, sample_count: int = 8000) -> dict[str, object]:
         stratify=y,
     )
 
-    model = _build_xgboost()
-    model.fit(x_train, y_train)
+    print("Running hyperparameter search...")
+    model = _search_best_xgboost(x_train, y_train)
+    print(f"Best params: {model.get_params()}")
 
     predictions = model.predict(x_test)
     report = classification_report(
@@ -88,9 +90,10 @@ def train(output_path: Path, sample_count: int = 8000) -> dict[str, object]:
         output_dict=True,
         zero_division=0,
     )
+    f1 = round(float(f1_score(y_test, predictions, average="macro")), 3)
     metrics = {
         "accuracy": round(float(accuracy_score(y_test, predictions)), 3),
-        "f1_macro": round(float(f1_score(y_test, predictions, average="macro")), 3),
+        "f1_macro": f1,
         "samples": len(rows),
         "class_distribution": _class_distribution(y),
         "confusion_matrix": confusion_matrix(y_test, predictions).tolist(),
@@ -100,9 +103,12 @@ def train(output_path: Path, sample_count: int = 8000) -> dict[str, object]:
     }
     important_factors = _important_factors(model)
 
+    _print_report(model, metrics)
+    _validation_checks(metrics, important_factors)
+
     bundle = {
         "name": "potager-tomate-xgboost",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "type": "xgboost_classifier",
         "training_dataset": "synthetic_probabilistic_v1",
         "trained_at": datetime.now(UTC).isoformat(),
@@ -115,7 +121,6 @@ def train(output_path: Path, sample_count: int = 8000) -> dict[str, object]:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, output_path)
-    _print_report(model, metrics)
     return metrics
 
 
@@ -137,7 +142,7 @@ def viability_score(payload: PredictionRequest, rng: random.Random | None) -> fl
     score += _interaction_effects(payload)
 
     if rng is not None:
-        score += rng.gauss(0, 5.5)
+        score += rng.gauss(0, 4.2)
 
     return max(0.0, min(100.0, score))
 
@@ -255,18 +260,22 @@ def _rain_frost_contribution(payload: PredictionRequest) -> float:
 
     if payload.risque_gel_7j:
         severity = max(0, 8 - payload.temp_min_7j)
-        score -= 10.0 + severity * 2.0
+        score -= 12.0 + severity * 2.5
 
     if payload.pluie_7j:
-        if payload.humidite_sol < 45:
-            score += 4.0
+        if payload.humidite_sol < 40:
+            score += 7.0
         elif payload.humidite_sol > 80:
-            score -= 4.0
+            score -= 6.0
+        elif payload.humidite_sol < 55:
+            score += 3.0
         else:
-            score += 1.0
+            score += 0.5
     else:
         if payload.humidite_sol < 35:
-            score -= 5.0
+            score -= 7.0
+        elif payload.humidite_sol < 45:
+            score -= 3.0
 
     return score
 
@@ -435,10 +444,10 @@ def _most_likely_label(score: float) -> str:
 
 
 def _label_probabilities(score: float) -> tuple[float, float, float]:
-    temp = 11.0
-    e_viable = math.exp((score - 60) / temp)
-    e_attendre = math.exp(-(abs(score - 50) / temp) ** 1.4) * 2.2
-    e_non_viable = math.exp((40 - score) / temp)
+    temp = 6.0
+    e_viable = math.exp((score - 62) / temp)
+    e_attendre = math.exp(-((score - 50) / 12.0) ** 2) * 2.5
+    e_non_viable = math.exp((38 - score) / temp)
 
     total = e_viable + e_attendre + e_non_viable
     viable = e_viable / total
@@ -458,18 +467,83 @@ def _label_probabilities(score: float) -> tuple[float, float, float]:
 # ---------------------------------------------------------------------------
 
 
+def _search_best_xgboost(x_train: pd.DataFrame, y_train: np.ndarray) -> XGBClassifier:
+    param_grid = {
+        "max_depth": [3, 4, 5, 6],
+        "learning_rate": [0.03, 0.05, 0.08, 0.1],
+        "n_estimators": [200, 400, 600],
+        "subsample": [0.8, 0.9, 1.0],
+        "colsample_bytree": [0.8, 0.9, 1.0],
+        "min_child_weight": [1, 3, 5],
+    }
+
+    rng = random.Random(42)
+    n_iter = 40
+    candidates = []
+    for _ in range(n_iter):
+        params = {k: rng.choice(v) for k, v in param_grid.items()}
+        candidates.append(params)
+
+    cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=42)
+    best_score = -1.0
+    best_params = None
+    best_model = None
+
+    for i, params in enumerate(candidates):
+        scores = []
+        for train_idx, val_idx in cv.split(x_train, y_train):
+            x_cv_train = x_train.iloc[train_idx]
+            y_cv_train = y_train[train_idx]
+            x_cv_val = x_train.iloc[val_idx]
+            y_cv_val = y_train[val_idx]
+
+            model = XGBClassifier(
+                objective="multi:softprob",
+                num_class=len(CLASS_LABELS),
+                reg_alpha=0.1,
+                reg_lambda=1.5,
+                eval_metric="mlogloss",
+                random_state=42,
+                **params,
+            )
+            model.fit(x_cv_train, y_cv_train, verbose=False)
+            preds = model.predict(x_cv_val)
+            scores.append(f1_score(y_cv_val, preds, average="macro"))
+
+        mean_score = float(np.mean(scores))
+        if mean_score > best_score:
+            best_score = mean_score
+            best_params = params
+        print(f"  [{i+1}/{n_iter}] f1={mean_score:.3f} | {params}")
+
+    print(f"\nBest CV f1_macro: {best_score:.3f}")
+    print(f"Best params: {best_params}")
+
+    best_model = XGBClassifier(
+        objective="multi:softprob",
+        num_class=len(CLASS_LABELS),
+        reg_alpha=0.1,
+        reg_lambda=1.5,
+        eval_metric="mlogloss",
+        random_state=42,
+        **best_params,
+    )
+    best_model.fit(x_train, y_train, verbose=False)
+    return best_model
+
+
 def _build_xgboost() -> XGBClassifier:
     return XGBClassifier(
         objective="multi:softprob",
         num_class=len(CLASS_LABELS),
-        n_estimators=200,
-        max_depth=4,
-        learning_rate=0.06,
-        subsample=0.85,
-        colsample_bytree=0.85,
-        min_child_weight=3,
-        reg_alpha=0.1,
-        reg_lambda=1.5,
+        n_estimators=400,
+        max_depth=3,
+        learning_rate=0.08,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        min_child_weight=5,
+        reg_alpha=0.3,
+        reg_lambda=2.0,
         eval_metric="mlogloss",
         random_state=42,
     )
@@ -545,6 +619,7 @@ def _evaluate_baselines(
     models = {
         "dummy_majority": DummyClassifier(strategy="most_frequent", random_state=42),
         "decision_tree_depth3": DecisionTreeClassifier(max_depth=3, random_state=42),
+        "random_forest": RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42),
     }
     results: dict[str, dict[str, object]] = {}
     for name, model in models.items():
@@ -642,14 +717,55 @@ def _print_report(model: XGBClassifier, metrics: dict[str, object]) -> None:
     xgb_f1 = metrics["f1_macro"]
     dummy_f1 = metrics["baselines"]["dummy_majority"]["f1_macro"]
     tree_f1 = metrics["baselines"]["decision_tree_depth3"]["f1_macro"]
+    rf_f1 = metrics["baselines"]["random_forest"]["f1_macro"]
     print(f"\nXGBoost vs DummyClassifier: +{xgb_f1 - dummy_f1:.3f} f1_macro")
     print(f"XGBoost vs DecisionTree(depth=3): +{xgb_f1 - tree_f1:.3f} f1_macro")
+    print(f"XGBoost vs RandomForest: +{xgb_f1 - rf_f1:.3f} f1_macro")
 
     if xgb_f1 <= dummy_f1:
         print("WARNING: XGBoost is NOT better than DummyClassifier!")
     if xgb_f1 - tree_f1 < 0.02:
         print("WARNING: DecisionTree(depth=3) is nearly as good as XGBoost!")
     print("=" * 70)
+
+
+def _validation_checks(metrics: dict[str, object], important_factors: list[str]) -> None:
+    f1 = metrics["f1_macro"]
+    tree_f1 = metrics["baselines"]["decision_tree_depth3"]["f1_macro"]
+    perm = metrics["permutation_importance"]
+
+    print("\n--- VALIDATION CHECKS ---")
+
+    if f1 >= 0.75:
+        print(f"[OK] f1_macro = {f1} >= 0.75")
+    else:
+        print(f"[WARN] f1_macro = {f1} < 0.75 target")
+
+    if f1 > 0.90:
+        print(f"[ALERT] f1_macro = {f1} > 0.90 — dataset may be too deterministic!")
+
+    if f1 - tree_f1 > 0.05:
+        print(f"[OK] XGBoost beats DecisionTree(depth=3) by {f1 - tree_f1:.3f}")
+    else:
+        print(f"[WARN] XGBoost only beats DecisionTree(depth=3) by {f1 - tree_f1:.3f}")
+
+    top_features = sorted(perm.items(), key=lambda x: x[1]["mean_drop"], reverse=True)
+    top_name, top_val = top_features[0][0], top_features[0][1]["mean_drop"]
+    total_importance = sum(v["mean_drop"] for _, v in top_features)
+    top_share = top_val / total_importance if total_importance > 0 else 0
+
+    if top_share > 0.5:
+        print(f"[WARN] {top_name} dominates with {top_share:.0%} of total permutation importance")
+    else:
+        print(f"[OK] No single feature dominates (top={top_name} at {top_share:.0%})")
+
+    low_importance = [name for name, v in perm.items() if v["mean_drop"] < 0.002]
+    if low_importance:
+        print(f"[INFO] Features with very low importance: {low_importance}")
+    else:
+        print("[OK] All features have meaningful importance")
+
+    print("--- END CHECKS ---\n")
 
 
 if __name__ == "__main__":

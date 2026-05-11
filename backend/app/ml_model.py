@@ -20,6 +20,10 @@ FEATURE_COLUMNS = [
     "pluie_7j",
     "risque_gel_7j",
     "water_usage",
+    "confort_thermique",
+    "stress_hydrique",
+    "risque_secheresse",
+    "score_saison_tomate",
 ]
 
 SEASON_CODES = {"printemps": 0, "ete": 1, "automne": 2, "hiver": 3}
@@ -36,6 +40,32 @@ def get_model_path() -> Path:
 
 
 def encode_payload(payload: PredictionRequest) -> list[float]:
+    temp_ideal_center = 20.0
+    confort_thermique = max(0.0, 10.0 - abs(payload.temp_moyenne_7j - temp_ideal_center) * 0.5)
+    if payload.temp_min_7j < 8:
+        confort_thermique *= max(0.2, payload.temp_min_7j / 8.0)
+
+    stress_hydrique = max(0.0, 50.0 - payload.humidite_sol) * (1.0 if not payload.pluie_7j else 0.3)
+    if payload.irrigation == "aucun":
+        stress_hydrique *= 1.5
+
+    risque_secheresse = (
+        max(0.0, 40.0 - payload.humidite_sol)
+        + max(0.0, payload.temp_moyenne_7j - 25.0) * 2.5
+        + (5.0 if not payload.pluie_7j and payload.humidite_sol < 40 else 0.0)
+    )
+
+    season_tomate_scores = {"printemps": 0.7, "ete": 0.9, "automne": 0.3, "hiver": 0.1}
+    score_saison_tomate = season_tomate_scores[payload.saison]
+    if payload.saison == "printemps" and payload.temp_moyenne_7j < 13:
+        score_saison_tomate = 0.35
+    elif payload.saison == "printemps" and payload.temp_moyenne_7j > 18:
+        score_saison_tomate = 0.85
+    elif payload.saison == "automne" and payload.temp_moyenne_7j > 16:
+        score_saison_tomate = 0.5
+    elif payload.saison == "hiver" and payload.temp_moyenne_7j > 12:
+        score_saison_tomate = 0.25
+
     return [
         float(SEASON_CODES[payload.saison]),
         float(SOIL_CODES[payload.type_sol]),
@@ -47,6 +77,10 @@ def encode_payload(payload: PredictionRequest) -> list[float]:
         float(payload.pluie_7j),
         float(payload.risque_gel_7j),
         payload.water_usage,
+        confort_thermique,
+        stress_hydrique,
+        risque_secheresse,
+        score_saison_tomate,
     ]
 
 
