@@ -37,7 +37,9 @@ jobs:
 
       - name: Lancer les tests
         working-directory: backend
-        run: pytest tests/ -v
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/ -v
 
   # ── 2. Build & Deploy ─────────────────────────────────────────────────────
   deploy:
