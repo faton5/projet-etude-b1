@@ -36,7 +36,8 @@ jobs:
         run: pip install -r backend/requirements-dev.txt
 
       - name: Lancer les tests
-        run: pytest backend/tests/ -v
+        working-directory: backend
+        run: pytest tests/ -v
 
   # ── 2. Build & Deploy ─────────────────────────────────────────────────────
   deploy:
