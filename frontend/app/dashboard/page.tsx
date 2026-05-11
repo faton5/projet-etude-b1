@@ -1,130 +1,122 @@
-import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Leaf, ThermometerSun } from "lucide-react";
-import { LiveIotPanel } from "@/components/LiveIotPanel";
-import { Shell } from "@/components/Shell";
-import { StatCard } from "@/components/StatCard";
-import { SystemStatusPanel } from "@/components/SystemStatusPanel";
-import { formatRecommendation, getHistory, type HistoryItem } from "@/lib/api";
+import { GardenShell } from "@/components/GardenShell";
 
-export default async function DashboardPage() {
-  let history: HistoryItem[] = [];
-  let error = "";
+const kpis = [
+  { icon: "device_thermostat", label: "Température", value: "22°C", span: false },
+  { icon: "water_drop", label: "Humidité sol", value: "45%", span: false },
+  { icon: "rainy", label: "Pluie", value: "Aucune", span: false },
+  { icon: "ac_unit", label: "Risque gel", value: "Faible", span: false },
+  { icon: "sprinkler", label: "Irrigation", value: "Auto", span: true }
+];
 
-  try {
-    history = await getHistory(50);
-  } catch {
-    error = "API indisponible. Lancez le backend pour afficher les donnees.";
-  }
-
-  const latest = history[0];
-  const total = history.length;
-  const viable = history.filter((item) => item.recommandation === "viable").length;
-  const waiting = history.filter((item) => item.recommandation === "attendre").length;
-  const blocked = history.filter((item) => item.recommandation === "non_viable").length;
-
+export default function DashboardPage() {
   return (
-    <Shell>
-      <section className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-        <div className="rounded-lg border border-ink/10 bg-white/85 p-6 shadow-soft">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-leaf">
-                Culture analysee
-              </p>
-              <h2 className="mt-2 text-4xl font-bold text-ink">Tomate</h2>
-            </div>
-            <Leaf className="text-leaf" size={36} aria-hidden="true" />
-          </div>
+    <GardenShell active="home">
+      <div className="flex-1 px-container-margin py-lg max-w-7xl mx-auto w-full flex flex-col gap-xl">
 
-          {latest ? (
-            <div className="mt-8 grid gap-5 md:grid-cols-[1fr_1.2fr]">
-              <div>
-                <p className="text-sm font-semibold text-ink/60">Recommandation</p>
-                <p className="mt-2 text-5xl font-bold text-tomato">
-                  {formatRecommendation(latest.recommandation)}
-                </p>
-                <p className="mt-3 text-lg text-ink/75">
-                  Confiance : {Math.round(latest.score_confiance * 100)} %
-                </p>
-              </div>
-              <div className="rounded-md bg-cream p-4">
-                <p className="font-semibold text-ink">Raison</p>
-                <p className="mt-2 leading-7 text-ink/75">{latest.explication}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {latest.facteurs_importants.map((factor) => (
-                    <span
-                      key={factor}
-                      className="rounded-md bg-white px-2.5 py-1 text-sm font-semibold text-soil"
-                    >
-                      {factor}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-8 rounded-md bg-cream p-5 text-ink/75">
-              {error || "Aucune prediction pour le moment."}
-            </div>
-          )}
-
-          <Link
-            href="/predict"
-            className="mt-6 inline-flex items-center gap-2 rounded-md bg-leaf px-4 py-3 font-semibold text-white transition hover:bg-ink"
+        {/* Status Card */}
+        <section className="bg-primary-container text-on-primary-container rounded-3xl p-xl shadow-sm border-l-8 border-primary flex flex-col md:flex-row items-start md:items-center justify-between gap-lg relative overflow-hidden">
+          <span
+            className="material-symbols-outlined absolute -right-8 -top-8 text-[200px] opacity-10"
+            style={{ fontVariationSettings: "'FILL' 1" }}
           >
-            <CheckCircle2 size={18} aria-hidden="true" />
-            Lancer une prediction
-          </Link>
-        </div>
-
-        <div className="grid gap-4">
-          <StatCard label="Total predictions" value={`${total}`} tone="soil" />
-          <StatCard label="Viables" value={`${viable}`} tone="leaf" />
-          <StatCard label="A attendre" value={`${waiting}`} />
-          <StatCard label="Non viables" value={`${blocked}`} tone="tomato" />
-        </div>
-      </section>
-
-      {latest && (
-        <section className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            label="Temperature minimale"
-            value={`${latest.request.temp_min_7j} C`}
-            tone="tomato"
-          />
-          <StatCard
-            label="Risque de gel"
-            value={latest.request.risque_gel_7j ? "Oui" : "Non"}
-            tone={latest.request.risque_gel_7j ? "tomato" : "leaf"}
-          />
-          <StatCard
-            label="Humidite du sol"
-            value={`${latest.request.humidite_sol} %`}
-            tone="leaf"
-          />
+            eco
+          </span>
+          <div className="flex flex-col gap-sm z-10">
+            <h2 className="font-display-lg text-display-lg-mobile md:text-display-lg font-bold">
+              Tout va bien pour les tomates aujourd&apos;hui.
+            </h2>
+            <p className="font-status-msg text-status-msg-mobile md:text-status-msg opacity-90">
+              Jardin Sud - Zone 2
+            </p>
+          </div>
+          <button className="z-10 bg-surface-bright text-primary px-lg py-sm rounded-full font-label-lg text-label-lg h-[56px] shadow-sm hover:bg-surface-variant transition-colors whitespace-nowrap">
+            Voir pourquoi
+          </button>
         </section>
-      )}
 
-      <SystemStatusPanel />
+        {/* Recommendation */}
+        <section className="bg-surface-container-low rounded-2xl p-lg flex flex-col md:flex-row items-center gap-md">
+          <div className="bg-secondary-container text-on-secondary-container p-sm rounded-full flex items-center justify-center">
+            <span
+              className="material-symbols-outlined text-[32px]"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              lightbulb
+            </span>
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <p className="font-headline-md text-headline-md text-on-surface">
+              Attendre avant d&apos;arroser.
+            </p>
+            <p className="font-body-lg text-body-lg text-on-surface-variant">
+              Température idéale pour la croissance.
+            </p>
+          </div>
+        </section>
 
-      <LiveIotPanel />
+        {/* KPI Bento Grid */}
+        <section className="grid grid-cols-2 md:grid-cols-5 gap-md">
+          {kpis.map((kpi) => (
+            <div
+              key={kpi.label}
+              className={`bg-surface-container rounded-2xl p-md flex flex-col items-center justify-center text-center gap-sm shadow-sm aspect-square${kpi.span ? " col-span-2 md:col-span-1" : ""}`}
+            >
+              <span
+                className="material-symbols-outlined text-[48px] text-tertiary"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                {kpi.icon}
+              </span>
+              <p className="font-label-lg text-label-lg text-on-surface-variant">{kpi.label}</p>
+              <p className="font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">
+                {kpi.value}
+              </p>
+            </div>
+          ))}
+        </section>
 
-      <section className="rounded-lg border border-ink/10 bg-white/80 p-5 shadow-soft">
-        <div className="flex items-center gap-3">
-          <ThermometerSun className="text-tomato" aria-hidden="true" />
-          <h2 className="text-xl font-bold text-ink">Decision V0</h2>
-        </div>
-        <p className="mt-3 max-w-3xl leading-7 text-ink/70">
-          Cette premiere version utilise des regles metier proches du futur modele XGBoost :
-          gel, temperature minimale, saison, humidite et irrigation.
-        </p>
-        {error && (
-          <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-tomato">
-            <AlertTriangle size={16} aria-hidden="true" />
-            {error}
-          </p>
-        )}
-      </section>
-    </Shell>
+        {/* Humidity Trend */}
+        <section className="bg-surface-container-lowest rounded-3xl p-xl shadow-sm border border-surface-variant">
+          <h3 className="font-headline-lg text-headline-lg text-on-surface mb-lg">
+            Tendance Humidité
+          </h3>
+          <div className="w-full h-[200px] relative mt-md">
+            <div className="absolute inset-0 flex flex-col justify-between opacity-10">
+              <div className="border-b-2 border-on-surface w-full" />
+              <div className="border-b-2 border-on-surface w-full" />
+              <div className="border-b-2 border-on-surface w-full" />
+            </div>
+            <svg className="w-full h-full" viewBox="0 0 1000 200" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="humidity-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#334f2b" stopOpacity={0.8} />
+                  <stop offset="100%" stopColor="#334f2b" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <path
+                d="M0,180 C200,180 300,100 500,120 C700,140 800,40 1000,50 L1000,200 L0,200 Z"
+                fill="url(#humidity-gradient)"
+                opacity={0.3}
+              />
+              <path
+                d="M0,180 C200,180 300,100 500,120 C700,140 800,40 1000,50"
+                fill="none"
+                stroke="#334f2b"
+                strokeLinecap="round"
+                strokeWidth={4}
+              />
+              <circle cx={500} cy={120} r={8} fill="#334f2b" />
+              <circle cx={1000} cy={50} r={8} fill="#334f2b" />
+            </svg>
+            <div className="flex justify-between mt-sm font-label-lg text-label-lg text-on-surface-variant opacity-70 px-sm">
+              <span>Matin</span>
+              <span>Midi</span>
+              <span>Maintenant</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </GardenShell>
   );
 }
