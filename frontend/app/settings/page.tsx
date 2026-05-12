@@ -2,14 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { GardenShell } from "@/components/GardenShell";
+import {
+  getGardenProfile,
+  updateGardenProfile,
+  type GardenProfile,
+  type PredictionRequest
+} from "@/lib/api";
 
-type SoilType = "clay" | "sand" | "silt";
-type IrrigationMode = "manuel" | "automatique";
+type SoilType = PredictionRequest["type_sol"];
+type IrrigationMode = PredictionRequest["irrigation"];
 
-const soilOptions: { id: SoilType; icon: string; label: string }[] = [
-  { id: "clay", icon: "texture", label: "Argileux" },
-  { id: "sand", icon: "grain", label: "Sableux" },
-  { id: "silt", icon: "waves", label: "Limoneux" }
+const soilOptions: { id: SoilType; icon: string; label: string; desc: string }[] = [
+  { id: "limoneux", icon: "psychiatry", label: "Je ne sais pas", desc: "Choix par defaut : terre de jardin classique." },
+  { id: "argileux", icon: "texture", label: "Terre lourde", desc: "Colle aux chaussures, reste humide longtemps." },
+  { id: "sableux", icon: "grain", label: "Terre legere", desc: "S'effrite facilement et seche vite." },
+  { id: "humifere", icon: "compost", label: "Terre avec compost", desc: "Sombre, souple, riche en matiere organique." }
+];
+
+const irrigationOptions: { id: IrrigationMode; label: string }[] = [
+  { id: "manuel", label: "Arrosage a la main" },
+  { id: "goutte_a_goutte", label: "Goutte-a-goutte" },
+  { id: "automatique", label: "Programmateur" },
+  { id: "aucun", label: "Pas d'arrosage" }
 ];
 
 const notifOptions = [
@@ -20,24 +34,52 @@ const notifOptions = [
 
 export default function SettingsPage() {
   const [location, setLocation] = useState("Rennes");
-  const [soilType, setSoilType] = useState<SoilType>("clay");
+  const [soilType, setSoilType] = useState<SoilType>("limoneux");
   const [irrigation, setIrrigation] = useState<IrrigationMode>("manuel");
   const [notifications, setNotifications] = useState({ watering: true, weather: false, harvest: true });
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
-    const savedLocation = window.localStorage.getItem("potager.location");
-    if (savedLocation) {
-      setLocation(savedLocation);
+    const localProfile = readLocalProfile();
+    if (localProfile) {
+      setLocation(localProfile.location);
+      setSoilType(localProfile.type_sol);
+      setIrrigation(localProfile.irrigation);
     }
+
+    getGardenProfile()
+      .then((profile) => {
+        setLocation(profile.location);
+        setSoilType(profile.type_sol);
+        setIrrigation(profile.irrigation);
+        writeLocalProfile(profile);
+      })
+      .catch(() => undefined);
   }, []);
 
-  function savePreferences() {
-    window.localStorage.setItem("potager.location", location.trim() || "Rennes");
-    window.localStorage.setItem("potager.soilType", soilType);
-    window.localStorage.setItem("potager.irrigation", irrigation);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+  async function savePreferences() {
+    const profile: GardenProfile = {
+      location: location.trim() || "Rennes",
+      type_sol: soilType,
+      irrigation
+    };
+    setSaveError("");
+
+    try {
+      const savedProfile = await updateGardenProfile(profile);
+      writeLocalProfile(savedProfile);
+      setLocation(savedProfile.location);
+      setSoilType(savedProfile.type_sol);
+      setIrrigation(savedProfile.irrigation);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch {
+      writeLocalProfile(profile);
+      setSaved(true);
+      setSaveError("Reglages gardes sur ce navigateur. L'API ne les a pas encore recus.");
+      window.setTimeout(() => setSaved(false), 2500);
+    }
   }
 
   return (
@@ -95,9 +137,9 @@ export default function SettingsPage() {
                 <h2 className="font-headline-md text-headline-md text-on-surface">Type de sol</h2>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mb-4">
-                Selectionnez le type de sol principal du potager.
+                Si vous ne savez pas, gardez le choix par defaut. Le systeme partira sur une terre de jardin classique.
               </p>
-              <div className="grid grid-cols-3 gap-md">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                 {soilOptions.map((s) => (
                   <button
                     key={s.id}
@@ -114,6 +156,7 @@ export default function SettingsPage() {
                       {s.icon}
                     </span>
                     <span className="font-label-lg text-label-lg text-on-surface">{s.label}</span>
+                    <span className="mt-1 text-sm text-on-surface-variant">{s.desc}</span>
                   </button>
                 ))}
               </div>
@@ -130,18 +173,18 @@ export default function SettingsPage() {
               <p className="font-body-md text-body-md text-on-surface-variant mb-4">
                 Choisissez comment l&apos;arrosage est gere.
               </p>
-              <div className="flex bg-surface-container p-1 rounded-lg">
-                {(["manuel", "automatique"] as const).map((mode) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm bg-surface-container p-1 rounded-lg">
+                {irrigationOptions.map((option) => (
                   <button
-                    key={mode}
-                    onClick={() => setIrrigation(mode)}
-                    className={`flex-1 py-3 text-center rounded-md font-label-lg text-label-lg transition-all ${
-                      irrigation === mode
+                    key={option.id}
+                    onClick={() => setIrrigation(option.id)}
+                    className={`py-3 px-3 text-center rounded-md font-label-lg text-label-lg transition-all ${
+                      irrigation === option.id
                         ? "bg-surface shadow-sm text-on-surface"
                         : "text-on-surface-variant hover:text-on-surface"
                     }`}
                   >
-                    {mode === "manuel" ? "Manuel" : "Automatique"}
+                    {option.label}
                   </button>
                 ))}
               </div>
@@ -191,9 +234,14 @@ export default function SettingsPage() {
                 <div>
                   <h3 className="font-status-msg text-status-msg text-on-surface">Sante du potager</h3>
                   <p className="font-body-md text-body-md text-on-surface-variant mt-2">
-                    Ces reglages aident a produire des recommandations plus adaptees au potager.
-                    Verifiez surtout la localisation et le type de sol.
+                    Ces reglages sont maintenant envoyes a l&apos;API et repris dans le dashboard et la prediction.
+                    Le type de sol sert seulement a ajuster la retention d&apos;eau.
                   </p>
+                  {saveError && (
+                    <p className="mt-3 rounded-md bg-surface p-3 text-sm text-on-surface-variant">
+                      {saveError}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="mt-lg pt-md border-t border-outline-variant">
@@ -218,4 +266,49 @@ export default function SettingsPage() {
       </div>
     </GardenShell>
   );
+}
+
+function writeLocalProfile(profile: GardenProfile) {
+  window.localStorage.setItem("potager.location", profile.location);
+  window.localStorage.setItem("potager.soilType", profile.type_sol);
+  window.localStorage.setItem("potager.irrigation", profile.irrigation);
+}
+
+function readLocalProfile(): GardenProfile | null {
+  const location = window.localStorage.getItem("potager.location");
+  const typeSol = normalizeSoilType(window.localStorage.getItem("potager.soilType"));
+  const irrigation = normalizeIrrigation(window.localStorage.getItem("potager.irrigation"));
+
+  if (!location && !typeSol && !irrigation) {
+    return null;
+  }
+
+  return {
+    location: location || "Rennes",
+    type_sol: typeSol || "limoneux",
+    irrigation: irrigation || "manuel"
+  };
+}
+
+function normalizeSoilType(value: string | null): SoilType | null {
+  if (value === "clay") {
+    return "argileux";
+  }
+  if (value === "sand") {
+    return "sableux";
+  }
+  if (value === "silt") {
+    return "limoneux";
+  }
+  if (value === "argileux" || value === "limoneux" || value === "sableux" || value === "calcaire" || value === "humifere") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeIrrigation(value: string | null): IrrigationMode | null {
+  if (value === "manuel" || value === "goutte_a_goutte" || value === "automatique" || value === "aucun") {
+    return value;
+  }
+  return null;
 }

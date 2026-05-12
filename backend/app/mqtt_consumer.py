@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.config import get_settings
 from app.database import save_iot_reading
 from app.demo import demo_iot_snapshot
+from app.garden_profile import garden_profile_store
 from app.schemas import (
     IotLiveResponse,
     IrrigationSensorPayload,
@@ -81,11 +82,20 @@ class IotStateStore:
                 if self._water_usage is not None
                 else None
             )
+            profile = garden_profile_store.get()
+            settings = get_settings()
+            irrigation = self._irrigation.irrigation if self._irrigation else None
+            irrigation_active = self._irrigation.active if self._irrigation else None
+            if settings.demo_mode:
+                irrigation = profile.irrigation
+                if profile.irrigation == "aucun":
+                    irrigation_active = False
+
             response = IotLiveResponse(
                 soil_humidity=self._soil.humidity if self._soil else None,
                 water_usage=self._water_usage.water_usage if self._water_usage else None,
-                irrigation=self._irrigation.irrigation if self._irrigation else None,
-                irrigation_active=self._irrigation.active if self._irrigation else None,
+                irrigation=irrigation,
+                irrigation_active=irrigation_active,
                 mqtt_connected=self._mqtt_connected,
                 mqtt_status=self._mqtt_status,
                 last_update=max(updates) if updates else None,

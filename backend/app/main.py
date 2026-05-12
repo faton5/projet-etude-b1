@@ -16,11 +16,13 @@ from app.database import (
     save_prediction,
     upsert_model_version,
 )
+from app.garden_profile import garden_profile_store
 from app.ml_model import get_model_metadata
 from app.mqtt_consumer import iot_state, mqtt_consumer
 from app.recommendation import predict_recommendation
 from app.schemas import (
     HealthResponse,
+    GardenProfile,
     HistoryItem,
     IotLiveResponse,
     IotPredictionRequest,
@@ -77,6 +79,16 @@ def health() -> HealthResponse:
         websocket="ok",
         demo_mode=settings.demo_mode,
     )
+
+
+@app.get("/garden/profile", response_model=GardenProfile)
+def garden_profile() -> GardenProfile:
+    return garden_profile_store.get()
+
+
+@app.put("/garden/profile", response_model=GardenProfile)
+def update_garden_profile(profile: GardenProfile) -> GardenProfile:
+    return garden_profile_store.update(profile)
 
 
 @app.post("/predict", response_model=PredictionResponse, status_code=201)

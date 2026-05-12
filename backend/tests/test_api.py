@@ -5,9 +5,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.database import init_db
-from app.main import health, history, history_item, iot_live, model_info, predict, predict_with_iot, weather
+from app.garden_profile import garden_profile_store
+from app.main import garden_profile, health, history, history_item, iot_live, model_info, predict, predict_with_iot, update_garden_profile, weather
 from app.mqtt_consumer import iot_state
-from app.schemas import IotPredictionRequest, PredictionRequest, WeatherResponse
+from app.schemas import GardenProfile, IotPredictionRequest, PredictionRequest, WeatherResponse
 from app.weather import WeatherServiceError, get_weather_forecast
 
 
@@ -17,8 +18,10 @@ def isolated_db(tmp_path, monkeypatch) -> Iterator[None]:
     monkeypatch.setenv("DEMO_MODE", "false")
     init_db()
     iot_state.clear()
+    garden_profile_store.update(GardenProfile())
     yield
     iot_state.clear()
+    garden_profile_store.update(GardenProfile())
 
 
 def valid_payload(**overrides) -> PredictionRequest:
@@ -47,6 +50,17 @@ def test_health_returns_ok():
     assert body["database"] == "ok"
     assert body["model"] in ("loaded", "fallback_rules")
     assert body["websocket"] == "ok"
+
+
+def test_garden_profile_can_be_updated():
+    updated = update_garden_profile(
+        GardenProfile(location="Nantes", type_sol="sableux", irrigation="goutte_a_goutte")
+    )
+
+    assert updated.location == "Nantes"
+    assert updated.type_sol == "sableux"
+    assert updated.irrigation == "goutte_a_goutte"
+    assert garden_profile().location == "Nantes"
 
 
 def test_prediction_returns_viable_for_good_conditions():
@@ -236,6 +250,28 @@ def test_iot_live_returns_latest_mqtt_values():
     assert live.water_usage == 12.4
     assert live.irrigation == "goutte_a_goutte"
     assert live.farm_id == "farm_1"
+
+
+def test_iot_live_uses_profile_irrigation_in_demo_mode(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    update_garden_profile(GardenProfile(location="Nantes", type_sol="sableux", irrigation="aucun"))
+    timestamp = "2026-05-11T18:00:00Z"
+    iot_state.update(
+        "farm/tomato/irrigation",
+        {
+            "sensor_id": "irrigation_sensor_1",
+            "farm_id": "farm_1",
+            "irrigation": "goutte_a_goutte",
+            "active": True,
+            "flow_l_min": 1.8,
+            "timestamp": timestamp,
+        },
+    )
+
+    live = iot_live()
+
+    assert live.irrigation == "aucun"
+    assert live.irrigation_active is False
 
 
 def test_predict_with_iot_combines_weather_and_mqtt(monkeypatch):

@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, CloudSun, Send } from "lucide-react";
 import {
   createPrediction,
   formatRecommendation,
+  getGardenProfile,
   getWeather,
   type PredictionRequest,
   type PredictionResponse,
@@ -37,10 +38,21 @@ export function PredictionForm() {
   const [weatherPending, setWeatherPending] = useState(false);
 
   useEffect(() => {
-    const savedLocation = window.localStorage.getItem("potager.location");
-    if (savedLocation) {
-      setPayload((current) => ({ ...current, location: savedLocation }));
+    const localProfile = readLocalProfile();
+    if (localProfile) {
+      setPayload((current) => ({ ...current, ...localProfile }));
     }
+
+    getGardenProfile()
+      .then((profile) => {
+        setPayload((current) => ({
+          ...current,
+          location: profile.location,
+          type_sol: profile.type_sol,
+          irrigation: profile.irrigation
+        }));
+      })
+      .catch(() => undefined);
   }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -155,10 +167,10 @@ export function PredictionForm() {
               }
             >
               <option value="limoneux">Limoneux</option>
-              <option value="argileux">Argileux</option>
-              <option value="sableux">Sableux</option>
+              <option value="argileux">Terre lourde / collante</option>
+              <option value="sableux">Terre legere / seche vite</option>
               <option value="calcaire">Calcaire</option>
-              <option value="humifere">Humifere</option>
+              <option value="humifere">Terre sombre avec compost</option>
             </select>
           </Field>
           <Field label="Irrigation">
@@ -171,8 +183,8 @@ export function PredictionForm() {
             >
               <option value="manuel">Manuel</option>
               <option value="goutte_a_goutte">Goutte-a-goutte</option>
-              <option value="automatique">Automatique</option>
-              <option value="aucun">Aucun</option>
+              <option value="automatique">Programmateur</option>
+              <option value="aucun">Pas d&apos;arrosage</option>
             </select>
           </Field>
           <NumberField label="Humidite du sol (%)" value={payload.humidite_sol} onChange={(value) => setPayload({ ...payload, humidite_sol: value })} />
@@ -240,6 +252,45 @@ export function PredictionForm() {
       </aside>
     </section>
   );
+}
+
+function readLocalProfile(): Partial<Pick<PredictionRequest, "location" | "type_sol" | "irrigation">> | null {
+  const location = window.localStorage.getItem("potager.location");
+  const typeSol = normalizeSoilType(window.localStorage.getItem("potager.soilType"));
+  const irrigation = normalizeIrrigation(window.localStorage.getItem("potager.irrigation"));
+
+  if (!location && !typeSol && !irrigation) {
+    return null;
+  }
+
+  return {
+    ...(location ? { location } : {}),
+    ...(typeSol ? { type_sol: typeSol } : {}),
+    ...(irrigation ? { irrigation } : {})
+  };
+}
+
+function normalizeSoilType(value: string | null): PredictionRequest["type_sol"] | null {
+  if (value === "clay") {
+    return "argileux";
+  }
+  if (value === "sand") {
+    return "sableux";
+  }
+  if (value === "silt") {
+    return "limoneux";
+  }
+  if (value === "argileux" || value === "limoneux" || value === "sableux" || value === "calcaire" || value === "humifere") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeIrrigation(value: string | null): PredictionRequest["irrigation"] | null {
+  if (value === "manuel" || value === "goutte_a_goutte" || value === "automatique" || value === "aucun") {
+    return value;
+  }
+  return null;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

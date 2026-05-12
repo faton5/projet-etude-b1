@@ -72,6 +72,21 @@ class ModelInfoResponse(BaseModel):
     trained_at: datetime | None = None
 
 
+class GardenProfile(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    location: str = Field(default="Rennes", min_length=1, max_length=120)
+    type_sol: SoilType = Field(default="limoneux")
+    irrigation: IrrigationType = Field(default="manuel")
+
+    @field_validator("type_sol", "irrigation", mode="before")
+    @classmethod
+    def normalize_profile_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip().lower().replace("-", "_")
+        return value
+
+
 class WeatherResponse(BaseModel):
     location: str
     latitude: float

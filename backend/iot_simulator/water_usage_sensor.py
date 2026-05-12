@@ -40,12 +40,12 @@ class WaterUsageSensorSimulator:
             dry_pressure = max(0.0, 52.0 - self.estimated_humidity) / 8.0
             heat_pressure = max(0.0, forecast.temperature - 18.0) * 0.22
             soil_pressure = max(0.0, 1.1 - retention) * 3.0
-            rain_offset = min(3.0, forecast.precipitation_7d * 0.18)
+            rain_offset = min(1.2, forecast.precipitation_7d * 0.04)
             usage = (dry_pressure + heat_pressure + soil_pressure - rain_offset) * irrigation_efficiency
-            usage = clamp(usage + gaussian_noise(0.7), 0.0, 24.0)
+            usage = clamp(usage + gaussian_noise(0.2), 0.0, 24.0)
 
             self.estimated_humidity = clamp(
-                self.estimated_humidity + min(4.0, usage * 0.18) + rain_offset * 0.25 - heat_pressure * 0.18,
+                self.estimated_humidity + min(1.0, usage * 0.05) + rain_offset * 0.08 - heat_pressure * 0.03,
                 18.0,
                 90.0,
             )

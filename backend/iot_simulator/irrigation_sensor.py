@@ -34,7 +34,7 @@ class IrrigationSensorSimulator:
             efficiency = IRRIGATION_EFFICIENCY.get(irrigation, 0.65)
             dry_weather = forecast.precipitation_7d < 2.0
             warm_weather = forecast.temperature_mean_7d >= 18.0
-            active_probability = 0.08 + (0.28 if dry_weather else 0.0) + (0.18 if warm_weather else 0.0)
+            active_probability = 0.02 + (0.12 if dry_weather else 0.0) + (0.08 if warm_weather else 0.0)
             active = irrigation != "aucun" and random.random() < active_probability
             flow_l_min = 0.0
             if active:

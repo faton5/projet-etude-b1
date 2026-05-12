@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { GardenShell } from "@/components/GardenShell";
 import {
+  getGardenProfile,
   getIotLive,
   getWeather,
+  type GardenProfile,
   type IotLiveResponse,
   type WeatherResponse
 } from "@/lib/api";
@@ -13,18 +15,23 @@ type LoadState = "loading" | "ready" | "error";
 
 export default function DashboardPage() {
   const [location, setLocation] = useState("Rennes");
+  const [profile, setProfile] = useState<GardenProfile>({
+    location: "Rennes",
+    type_sol: "limoneux",
+    irrigation: "manuel"
+  });
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [iot, setIot] = useState<IotLiveResponse | null>(null);
   const [status, setStatus] = useState<LoadState>("loading");
   const [error, setError] = useState("");
 
-  async function loadDashboard(requestedLocation = location) {
+  async function loadDashboard(currentProfile = profile) {
     setStatus("loading");
     setError("");
 
     try {
       const [forecast, live] = await Promise.all([
-        getWeather(requestedLocation),
+        getWeather(currentProfile.location),
         getIotLive()
       ]);
       setWeather(forecast);
@@ -37,12 +44,23 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    const savedLocation = window.localStorage.getItem("potager.location") || "Rennes";
-    setLocation(savedLocation);
-    loadDashboard(savedLocation);
+    let activeProfile = readLocalProfile();
+    setProfile(activeProfile);
+    setLocation(activeProfile.location);
+    loadDashboard(activeProfile);
+
+    getGardenProfile()
+      .then((apiProfile) => {
+        activeProfile = apiProfile;
+        setProfile(apiProfile);
+        setLocation(apiProfile.location);
+        writeLocalProfile(apiProfile);
+        loadDashboard(apiProfile);
+      })
+      .catch(() => undefined);
 
     const interval = window.setInterval(() => {
-      loadDashboard(savedLocation);
+      loadDashboard(activeProfile);
     }, 60000);
 
     return () => window.clearInterval(interval);
@@ -50,7 +68,7 @@ export default function DashboardPage() {
   }, []);
 
   const summary = useMemo(() => buildSummary(weather, iot, status), [weather, iot, status]);
-  const kpis = useMemo(() => buildKpis(weather, iot, status), [weather, iot, status]);
+  const kpis = useMemo(() => buildKpis(weather, iot, profile, status), [weather, iot, profile, status]);
   const soilHumidity = iot?.soil_humidity ?? null;
   const lastUpdate = iot?.last_update
     ? new Date(iot.last_update).toLocaleTimeString("fr-FR")
@@ -77,7 +95,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <button
-            onClick={() => loadDashboard(location)}
+            onClick={() => loadDashboard(profile)}
             disabled={status === "loading"}
             className="z-10 bg-surface-bright text-primary px-lg py-sm rounded-full font-label-lg text-label-lg min-h-[56px] shadow-sm hover:bg-surface-variant transition-colors whitespace-nowrap disabled:opacity-70"
           >
@@ -131,7 +149,7 @@ export default function DashboardPage() {
                 Humidite du sol
               </h3>
               <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
-                Donnee issue du capteur IoT live.
+                {iot?.demo ? "Estimation de demonstration stable." : "Donnee issue du capteur IoT live."}
               </p>
             </div>
             <p className="font-display-lg text-display-lg-mobile md:text-display-lg text-primary">
@@ -159,6 +177,7 @@ export default function DashboardPage() {
 function buildKpis(
   weather: WeatherResponse | null,
   iot: IotLiveResponse | null,
+  profile: GardenProfile,
   status: LoadState
 ) {
   const loading = status === "loading";
@@ -191,7 +210,7 @@ function buildKpis(
     {
       icon: "sprinkler",
       label: "Irrigation",
-      value: loading ? "..." : formatIrrigation(iot?.irrigation),
+      value: loading ? "..." : formatIrrigation(iot?.demo ? profile.irrigation : iot?.irrigation ?? profile.irrigation),
       span: true
     }
   ];
@@ -235,9 +254,13 @@ function buildSummary(
   }
 
   return {
-    title: `Temperature actuelle : ${formatTemperature(weather.temp_actuelle)}.`,
+    title: weather.source === "open_meteo"
+      ? `Temperature actuelle : ${formatTemperature(weather.temp_actuelle)}.`
+      : "Meteo reelle indisponible.",
     recommendation: weather.pluie_7j ? "Surveiller la pluie avant d'arroser." : "Conditions meteo correctes.",
-    detail: `Moyenne 7 jours : ${formatTemperature(weather.temp_moyenne_7j)}. Pluie estimee : ${weather.precipitation_7j} mm.`
+    detail: weather.source === "open_meteo"
+      ? `Moyenne 7 jours : ${formatTemperature(weather.temp_moyenne_7j)}. Pluie estimee : ${weather.precipitation_7j} mm.`
+      : "Aucune temperature fictive n'est presentee comme une vraie mesure."
   };
 }
 
@@ -259,4 +282,41 @@ function formatIrrigation(value?: IotLiveResponse["irrigation"] | null) {
     automatique: "Auto",
     aucun: "Aucune"
   }[value ?? "aucun"];
+}
+
+function readLocalProfile(): GardenProfile {
+  return {
+    location: window.localStorage.getItem("potager.location") || "Rennes",
+    type_sol: normalizeSoilType(window.localStorage.getItem("potager.soilType")) || "limoneux",
+    irrigation: normalizeIrrigation(window.localStorage.getItem("potager.irrigation")) || "manuel"
+  };
+}
+
+function writeLocalProfile(profile: GardenProfile) {
+  window.localStorage.setItem("potager.location", profile.location);
+  window.localStorage.setItem("potager.soilType", profile.type_sol);
+  window.localStorage.setItem("potager.irrigation", profile.irrigation);
+}
+
+function normalizeSoilType(value: string | null): GardenProfile["type_sol"] | null {
+  if (value === "clay") {
+    return "argileux";
+  }
+  if (value === "sand") {
+    return "sableux";
+  }
+  if (value === "silt") {
+    return "limoneux";
+  }
+  if (value === "argileux" || value === "limoneux" || value === "sableux" || value === "calcaire" || value === "humifere") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeIrrigation(value: string | null): GardenProfile["irrigation"] | null {
+  if (value === "manuel" || value === "goutte_a_goutte" || value === "automatique" || value === "aucun") {
+    return value;
+  }
+  return null;
 }

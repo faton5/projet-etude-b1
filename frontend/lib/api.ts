@@ -59,6 +59,12 @@ export type IotLiveResponse = {
   demo: boolean;
 };
 
+export type GardenProfile = {
+  location: string;
+  type_sol: PredictionRequest["type_sol"];
+  irrigation: PredictionRequest["irrigation"];
+};
+
 export type HealthResponse = {
   api: "ok";
   mqtt: string;
@@ -141,6 +147,30 @@ export async function getIotLive(): Promise<IotLiveResponse> {
   });
   if (!response.ok) {
     throw new Error("Impossible de charger les donnees IoT");
+  }
+  return response.json();
+}
+
+export async function getGardenProfile(): Promise<GardenProfile> {
+  const response = await fetch(`${getApiUrl()}/garden/profile`, {
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error("Impossible de charger les reglages du potager");
+  }
+  return response.json();
+}
+
+export async function updateGardenProfile(profile: GardenProfile): Promise<GardenProfile> {
+  const response = await fetch(`${getApiUrl()}/garden/profile`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(profile)
+  });
+  if (!response.ok) {
+    throw new Error("Impossible d'enregistrer les reglages du potager");
   }
   return response.json();
 }

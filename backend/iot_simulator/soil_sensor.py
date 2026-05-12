@@ -38,10 +38,10 @@ class SoilSensorSimulator:
             retention = SOIL_WATER_RETENTION.get(self.config.soil_type, 1.0)
             irrigation_efficiency = IRRIGATION_EFFICIENCY.get(self.config.irrigation, 0.65)
 
-            evaporation = max(0.0, forecast.temperature - 14.0) * 0.12 / retention
-            rain_gain = min(3.5, forecast.precipitation_7d * 0.06 * retention)
-            irrigation_gain = irrigation_efficiency * max(0.0, 55.0 - self.humidity) * 0.04
-            drift = rain_gain + irrigation_gain - evaporation + gaussian_noise(1.25)
+            evaporation = max(0.0, forecast.temperature - 14.0) * 0.015 / retention
+            rain_gain = min(0.18, forecast.precipitation_7d * 0.002 * retention)
+            irrigation_gain = irrigation_efficiency * max(0.0, 55.0 - self.humidity) * 0.008
+            drift = rain_gain + irrigation_gain - evaporation + gaussian_noise(0.12)
 
             self.humidity = clamp(self.humidity + drift, 12.0, 96.0)
             payload = {
