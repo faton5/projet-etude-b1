@@ -140,6 +140,7 @@ export default function DashboardPage() {
   const summary = useMemo(() => buildSummary(weather, iot, advice, status), [weather, iot, advice, status]);
   const kpis = useMemo(() => buildKpis(weather, iot, status), [weather, iot, status]);
   const tone = toneStyles[summary.tone];
+  const detailText = error && !advice ? error : summary.detail;
   const soilHumidity = iot?.soil_humidity ?? null;
   const updateLabel = status === "loading" ? "Lecture en cours" : weather || iot ? "Mis à jour récemment" : "En attente";
   const soilState = getSoilState(soilHumidity);
@@ -182,7 +183,7 @@ export default function DashboardPage() {
               {summary.nextStep}
             </p>
             <p className="font-body-lg text-body-lg text-on-surface-variant break-words">
-              {error || summary.detail}
+              {detailText}
             </p>
           </div>
         </section>
@@ -329,23 +330,9 @@ function buildSummary(
     };
   }
 
-  if (!weather) {
-    return {
-      tone: "watch" as SummaryTone,
-      icon: "cloud_off",
-      badge: "À surveiller",
-      title: "On attend la météo",
-      reason: "Les informations météo ne sont pas encore revenues.",
-      nextStep: "Vérifier le potager normalement",
-      detail: "Aucune action urgente n'est indiquée pour le moment.",
-      history: "Dernier point incomplet : la météo n'est pas disponible."
-    };
-  }
+  const hasRealData = weather?.source === "open_meteo";
 
-  const hasRealData = weather.source === "open_meteo";
-
-  // Priorité 1 : Risque de gel (critique pour les plants)
-  if (weather.risque_gel_7j) {
+  if (weather?.risque_gel_7j) {
     return {
       tone: "urgent" as SummaryTone,
       icon: "ac_unit",
@@ -360,6 +347,19 @@ function buildSummary(
 
   if (advice) {
     return buildActionSummary(weather, iot, advice, hasRealData);
+  }
+
+  if (!weather) {
+    return {
+      tone: "watch" as SummaryTone,
+      icon: "cloud_off",
+      badge: "À surveiller",
+      title: "On attend la météo",
+      reason: "Les informations météo ne sont pas encore revenues.",
+      nextStep: "Vérifier le potager normalement",
+      detail: "Aucune action urgente n'est indiquée pour le moment.",
+      history: "Dernier point incomplet : la météo n'est pas disponible."
+    };
   }
 
   const soilHumidity = iot?.soil_humidity;
@@ -381,13 +381,15 @@ function buildSummary(
 }
 
 function buildActionSummary(
-  weather: WeatherResponse,
+  weather: WeatherResponse | null,
   iot: IotLiveResponse | null,
   advice: WateringAdviceResponse,
   hasRealData: boolean
 ) {
   const soilText = iot?.soil_humidity != null ? `La terre est à ${Math.round(iot.soil_humidity)} %.` : "";
-  const rainText = weather.pluie_7j ? "De la pluie est prévue cette semaine." : "Aucune pluie n'est prévue.";
+  const rainText = weather
+    ? weather.pluie_7j ? "De la pluie est prévue cette semaine." : "Aucune pluie n'est prévue."
+    : "La météo est en attente.";
   const detail = `${humanizeAction(advice.recommandation_action)} ${humanizeCheck(advice.prochaine_verification)}`;
   const history = `${humanizeAdvice(advice.conseil)} ${hasRealData ? rainText : "Les informations sont partielles."}`;
 
@@ -430,7 +432,7 @@ function buildActionSummary(
     };
   }
 
-  if (advice.conseil.toLowerCase().includes("reporter") || advice.conseil.toLowerCase().includes("pluie")) {
+  if (weather?.pluie_7j && (advice.conseil.toLowerCase().includes("reporter") || advice.conseil.toLowerCase().includes("pluie"))) {
     return {
       tone: "ok" as SummaryTone,
       icon: "rainy",

@@ -28,7 +28,9 @@ class SoilSensorSimulator:
         self.weather = WeatherCache(config)
         retention = SOIL_WATER_RETENTION.get(config.soil_type, 1.0)
         self.humidity = clamp(50.0 * retention + random.uniform(-5, 5), 18.0, 88.0)
-        self.last_rain_mm = 0.0  # Track pluie précédente pour détecter changements
+        self.last_rain_mm = 0.0
+        self.recent_rain_effect = 0.0
+        self.manual_watering_ticks = 0
 
     def run(self) -> None:
         client = build_client("soil_sensor_1", self.config)
@@ -39,27 +41,38 @@ class SoilSensorSimulator:
             retention = SOIL_WATER_RETENTION.get(self.config.soil_type, 1.0)
             irrigation_efficiency = IRRIGATION_EFFICIENCY.get(self.config.irrigation, 0.65)
 
-            # Évaporation : augmente avec la température
-            # Plus il fait chaud, plus l'eau s'évapore rapidement
-            evaporation = max(0.0, forecast.temperature - 14.0) * 0.015 / retention
+            # Evaporation: warm weather dries the soil faster.
+            evaporation = max(0.0, forecast.temperature - 12.0) * 0.022 / retention
 
-            # Gain par pluie DU JOUR (plus réaliste que total 7j)
-            # Si pluie > pluie précédente, c'est qu'il pleut maintenant → boost humidité
+            # Rain has memory. A shower should keep the soil wetter for a while,
+            # then the effect slowly fades instead of snapping back to 52%.
             rain_delta = forecast.precipitation_today - self.last_rain_mm
-            if rain_delta > 0.5:  # Il pleut actuellement (>0.5mm nouveau)
-                rain_gain = min(0.35, rain_delta * 0.15 * retention)  # Impact fort
-            elif forecast.precipitation_today > 0.1:  # Pluie résiduelle
-                rain_gain = min(0.18, forecast.precipitation_today * 0.06 * retention)
+            if rain_delta > 0.2:
+                self.recent_rain_effect = clamp(self.recent_rain_effect + rain_delta * 0.9, 0.0, 14.0)
+            elif forecast.precipitation_today <= 0.1:
+                self.recent_rain_effect *= 0.965
             else:
-                rain_gain = 0.0
+                self.recent_rain_effect *= 0.985
+
+            rain_gain = min(0.28, self.recent_rain_effect * 0.018 * retention)
             self.last_rain_mm = forecast.precipitation_today
 
-            # Gain par irrigation : compense si sol trop sec
-            # Plus le sol est sec, plus l'irrigation apporte d'eau
-            irrigation_gain = irrigation_efficiency * max(0.0, 55.0 - self.humidity) * 0.008
+            # Manual watering is occasional. Drip/automatic watering can react
+            # when the soil becomes dry, but no mode constantly pulls to 55%.
+            irrigation_gain = 0.0
+            if self.config.irrigation == "manuel":
+                if self.manual_watering_ticks > 0:
+                    irrigation_gain = random.uniform(0.45, 0.95) * irrigation_efficiency * retention
+                    self.manual_watering_ticks -= 1
+                elif self.humidity < 34.0 and forecast.precipitation_7d < 4.0 and random.random() < 0.12:
+                    self.manual_watering_ticks = random.randint(6, 14)
+            elif self.config.irrigation == "automatique" and self.humidity < 43.0:
+                irrigation_gain = min(0.38, (48.0 - self.humidity) * 0.035) * irrigation_efficiency
+            elif self.config.irrigation == "goutte_a_goutte" and self.humidity < 50.0:
+                irrigation_gain = min(0.22, (52.0 - self.humidity) * 0.018) * irrigation_efficiency
 
-            # Drift total avec bruit gaussien pour variabilité naturelle
-            drift = rain_gain + irrigation_gain - evaporation + gaussian_noise(0.12)
+            weekly_rain_cooldown = min(0.08, forecast.precipitation_7d * 0.003)
+            drift = rain_gain + irrigation_gain + weekly_rain_cooldown - evaporation + gaussian_noise(0.18)
 
             self.humidity = clamp(self.humidity + drift, 12.0, 96.0)
             payload = {
