@@ -29,9 +29,12 @@ from app.schemas import (
     ModelInfoResponse,
     PredictionRequest,
     PredictionResponse,
+    WateringAdviceRequest,
+    WateringAdviceResponse,
     WeatherResponse,
 )
 from app.weather import WeatherServiceError, get_weather_forecast
+from app.watering_advice import calculate_watering_advice
 
 
 settings = get_settings()
@@ -203,6 +206,57 @@ async def iot_live_websocket(websocket: WebSocket) -> None:
             await asyncio.sleep(2)
     except WebSocketDisconnect:
         return
+
+
+@app.post("/advice/watering", response_model=WateringAdviceResponse)
+def watering_advice(request: WateringAdviceRequest) -> WateringAdviceResponse:
+    """
+    Génère un conseil d'arrosage intelligent basé sur les features ML.
+
+    Peut fonctionner en mode manuel (tous les champs fournis) ou en mode IoT/météo
+    (récupération automatique des données manquantes).
+    """
+    # Si des données manquent, essayer de les compléter automatiquement
+    if any([
+        request.humidite_sol is None,
+        request.temp_actuelle is None,
+        request.temp_moyenne_7j is None,
+        request.pluie_7j is None,
+    ]):
+        # Récupérer la météo si nécessaire
+        if request.temp_actuelle is None or request.pluie_7j is None:
+            try:
+                forecast = get_weather_forecast(location=request.location)
+                if request.temp_actuelle is None:
+                    request.temp_actuelle = forecast.temp_actuelle
+                if request.temp_min_7j is None:
+                    request.temp_min_7j = forecast.temp_min_7j
+                if request.temp_moyenne_7j is None:
+                    request.temp_moyenne_7j = forecast.temp_moyenne_7j
+                if request.pluie_7j is None:
+                    request.pluie_7j = forecast.pluie_7j
+                if request.risque_gel_7j is None:
+                    request.risque_gel_7j = forecast.risque_gel_7j
+                if request.precipitation_7j is None:
+                    request.precipitation_7j = forecast.precipitation_7j
+            except WeatherServiceError:
+                pass  # Continuer avec les valeurs par défaut
+
+        # Récupérer les données IoT si disponibles
+        if request.humidite_sol is None or request.water_usage is None:
+            snapshot = iot_state.snapshot()
+            if request.humidite_sol is None and snapshot.soil_humidity is not None:
+                request.humidite_sol = snapshot.soil_humidity
+            if request.water_usage is None and snapshot.water_usage is not None:
+                request.water_usage = snapshot.water_usage
+            if snapshot.irrigation is not None:
+                request.irrigation = snapshot.irrigation
+
+        # Compléter la saison si manquante
+        if request.saison is None:
+            request.saison = _current_season()
+
+    return calculate_watering_advice(request)
 
 
 def _current_season(now: datetime | None = None) -> str:

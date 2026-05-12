@@ -33,6 +33,24 @@ select {
   background-size: auto, 28px 28px, 28px 28px;
 }
 
+.dashboard-content {
+  width: calc(100% - 24px);
+  max-width: none;
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+@media (min-width: 768px) {
+  .dashboard-content {
+    width: 100%;
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
 .surface {
   @apply border border-ink/10 shadow-soft;
   background-color: rgb(255 255 255 / 0.88);

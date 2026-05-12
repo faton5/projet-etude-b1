@@ -50,13 +50,13 @@ export function GardenShell({
               >
                 settings
               </span>
-              <span className="font-label-lg text-label-lg">Reglages</span>
+              <span className="font-label-lg text-label-lg">Réglages</span>
             </Link>
           </li>
         </ul>
         <div className="mt-auto flex items-center gap-sm pt-md border-t border-surface-variant">
           <span className="material-symbols-outlined text-[32px] text-tertiary">account_circle</span>
-          <span className="font-label-lg text-label-lg">Profil equipe</span>
+          <span className="font-label-lg text-label-lg">Profil équipe</span>
         </div>
       </nav>
 
@@ -101,7 +101,7 @@ export function GardenShell({
           >
             settings
           </span>
-          <span className="text-xs font-label-lg mt-1">Reglages</span>
+          <span className="text-xs font-label-lg mt-1">Réglages</span>
         </Link>
       </nav>
     </div>

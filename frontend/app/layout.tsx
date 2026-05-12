@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgroPulse AI",
-  description: "Supervision IA et IoT pour la plantation de tomates"
+  title: "Potager EHPAD",
+  description: "Aide simple pour s'occuper du potager"
 };
 
 export default function RootLayout({

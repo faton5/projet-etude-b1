@@ -6,12 +6,15 @@ import {
   getGardenProfile,
   getIotLive,
   getWeather,
+  getWateringAdvice,
   type GardenProfile,
   type IotLiveResponse,
-  type WeatherResponse
+  type WeatherResponse,
+  type WateringAdviceResponse
 } from "@/lib/api";
 
 type LoadState = "loading" | "ready" | "error";
+type SummaryTone = "ok" | "water" | "watch" | "urgent";
 
 export default function DashboardPage() {
   const retryTimeout = useRef<number | null>(null);
@@ -23,6 +26,7 @@ export default function DashboardPage() {
   });
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [iot, setIot] = useState<IotLiveResponse | null>(null);
+  const [advice, setAdvice] = useState<WateringAdviceResponse | null>(null);
   const [status, setStatus] = useState<LoadState>("loading");
   const [error, setError] = useState("");
 
@@ -49,27 +53,50 @@ export default function DashboardPage() {
       getIotLive()
     ]);
 
+    let forecast: WeatherResponse | null = null;
+    let live: IotLiveResponse | null = null;
+
     if (forecastResult.status === "fulfilled") {
-      const forecast = forecastResult.value;
+      forecast = forecastResult.value;
       setWeather(forecast);
       if (isRealWeather(forecast)) {
         clearWeatherRetry();
       } else {
-        setError("Meteo reelle temporairement indisponible. Nouvelle tentative automatique.");
+        setError("On attend la météo. Les informations vont revenir seules.");
         scheduleWeatherRetry(currentProfile);
       }
     } else {
       setWeather(null);
-      setError("Meteo reelle indisponible. Nouvelle tentative automatique.");
+      setError("On attend la météo. Les informations vont revenir seules.");
       scheduleWeatherRetry(currentProfile);
     }
 
     if (liveResult.status === "fulfilled") {
-      const live = liveResult.value;
+      live = liveResult.value;
       setIot(live);
     } else {
       setIot(null);
-      setError((current) => current || "Impossible de charger les donnees des capteurs.");
+      setError((current) => current || "Les mesures du jardin ne sont pas disponibles pour l'instant.");
+    }
+
+    // Récupérer le conseil d'arrosage pour le jardin.
+    if (forecast || live) {
+      try {
+        const wateringAdvice = await getWateringAdvice({
+          location: currentProfile.location,
+          type_sol: currentProfile.type_sol,
+          irrigation: currentProfile.irrigation,
+          humidite_sol: live?.soil_humidity ?? undefined,
+          temp_actuelle: forecast?.temp_actuelle,
+          temp_min_7j: forecast?.temp_min_7j,
+          temp_moyenne_7j: forecast?.temp_moyenne_7j,
+          pluie_7j: forecast?.pluie_7j,
+          precipitation_7j: forecast?.precipitation_7j
+        });
+        setAdvice(wateringAdvice);
+      } catch {
+        setAdvice(null);
+      }
     }
 
     if (forecastResult.status === "fulfilled" || liveResult.status === "fulfilled") {
@@ -106,117 +133,150 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const summary = useMemo(() => buildSummary(weather, iot, status), [weather, iot, status]);
-  const kpis = useMemo(() => buildKpis(weather, iot, profile, status), [weather, iot, profile, status]);
+  const summary = useMemo(() => buildSummary(weather, iot, advice, status), [weather, iot, advice, status]);
+  const kpis = useMemo(() => buildKpis(weather, iot, status), [weather, iot, status]);
+  const tone = toneStyles[summary.tone];
   const soilHumidity = iot?.soil_humidity ?? null;
-  const lastUpdate = iot?.last_update
-    ? new Date(iot.last_update).toLocaleTimeString("fr-FR")
-    : weather
-      ? isRealWeather(weather) ? "Meteo chargee" : "Meteo indispo"
-      : "En attente";
+  const updateLabel = status === "loading" ? "Lecture en cours" : weather || iot ? "Mis à jour récemment" : "En attente";
+  const soilState = getSoilState(soilHumidity);
 
   return (
     <GardenShell active="home">
-      <div className="flex-1 px-container-margin py-lg max-w-7xl mx-auto w-full flex flex-col gap-xl">
-        <section className="bg-primary-container text-on-primary-container rounded-3xl p-xl shadow-sm border-l-8 border-primary flex flex-col md:flex-row items-start md:items-center justify-between gap-lg relative overflow-hidden">
+      <div className="dashboard-content flex-1 py-lg min-w-0 overflow-x-hidden flex flex-col gap-lg md:gap-xl">
+        <section className={`${tone.hero} rounded-3xl p-md md:p-xl shadow-sm border-l-8 ${tone.border} flex flex-col gap-md relative overflow-hidden`}>
           <span
-            className="material-symbols-outlined absolute -right-8 -top-8 text-[200px] opacity-10"
+            className="material-symbols-outlined absolute -right-8 -top-8 text-[180px] opacity-10"
             style={{ fontVariationSettings: "'FILL' 1" }}
           >
-            eco
+            {summary.icon}
           </span>
-          <div className="flex flex-col gap-sm z-10">
-            <h2 className="font-display-lg text-display-lg-mobile md:text-display-lg font-bold">
+          <div className="flex flex-col gap-sm z-10 max-w-[300px] md:max-w-4xl min-w-0">
+            <p className="font-label-lg text-label-lg opacity-90">{summary.badge}</p>
+            <h2 className="font-display-lg text-[38px] leading-[44px] md:text-[56px] md:leading-[62px] font-bold break-words">
               {summary.title}
             </h2>
-            <p className="font-status-msg text-status-msg-mobile md:text-status-msg opacity-90">
-              {weather?.location ?? location} - {lastUpdate}
+            <p className="font-status-msg text-status-msg-mobile md:text-status-msg opacity-95 break-words">
+              {summary.reason}
             </p>
           </div>
-          <button
-            onClick={() => loadDashboard(profile)}
-            disabled={status === "loading"}
-            className="z-10 bg-surface-bright text-primary px-lg py-sm rounded-full font-label-lg text-label-lg min-h-[56px] shadow-sm hover:bg-surface-variant transition-colors whitespace-nowrap disabled:opacity-70"
-          >
-            {status === "loading" ? "Actualisation" : "Actualiser"}
-          </button>
+          <p className="z-10 font-body-md text-body-md opacity-85">
+            {weather?.location ?? location} - {updateLabel}
+          </p>
         </section>
 
-        <section className="bg-surface-container-low rounded-2xl p-lg flex flex-col md:flex-row items-center gap-md">
-          <div className="bg-secondary-container text-on-secondary-container p-sm rounded-full flex items-center justify-center">
+        <section className="bg-surface-container-low rounded-2xl p-md md:p-lg flex flex-col md:flex-row items-center gap-md">
+          <div className={`${tone.badgeBg} ${tone.badgeText} p-sm rounded-full flex items-center justify-center`}>
             <span
               className="material-symbols-outlined text-[32px]"
               style={{ fontVariationSettings: "'FILL' 1" }}
             >
-              lightbulb
+              schedule
             </span>
           </div>
-          <div className="flex-1 text-center md:text-left">
-            <p className="font-headline-md text-headline-md text-on-surface">
-              {summary.recommendation}
+          <div className="flex-1 min-w-0 w-full max-w-[300px] md:max-w-none mx-auto md:mx-0 text-center md:text-left">
+            <p className="font-headline-md text-headline-md text-on-surface break-words">
+              {summary.nextStep}
             </p>
-            <p className="font-body-lg text-body-lg text-on-surface-variant">
+            <p className="font-body-lg text-body-lg text-on-surface-variant break-words">
               {error || summary.detail}
             </p>
           </div>
         </section>
 
-        <section className="grid grid-cols-2 md:grid-cols-5 gap-md">
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-sm md:gap-md">
           {kpis.map((kpi) => (
             <div
               key={kpi.label}
-              className={`bg-surface-container rounded-2xl p-md flex flex-col items-center justify-center text-center gap-sm shadow-sm aspect-square${kpi.span ? " col-span-2 md:col-span-1" : ""}`}
+              className="bg-surface-container rounded-2xl p-md flex flex-col items-center justify-center text-center gap-xs shadow-sm min-h-[136px]"
             >
               <span
-                className="material-symbols-outlined text-[48px] text-tertiary"
+                className="material-symbols-outlined text-[36px] text-tertiary"
                 style={{ fontVariationSettings: "'FILL' 1" }}
               >
                 {kpi.icon}
               </span>
               <p className="font-label-lg text-label-lg text-on-surface-variant">{kpi.label}</p>
-              <p className="font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface">
+              <p className="font-headline-lg text-headline-lg text-on-surface">
                 {kpi.value}
               </p>
             </div>
           ))}
         </section>
 
-        <section className="bg-surface-container-lowest rounded-3xl p-xl shadow-sm border border-surface-variant">
-          <div className="flex flex-col gap-sm md:flex-row md:items-end md:justify-between">
+        <section className="bg-surface-container-lowest rounded-3xl p-lg shadow-sm border border-surface-variant">
+          <div className="flex flex-col gap-sm md:flex-row md:items-center md:justify-between">
             <div>
-              <h3 className="font-headline-lg text-headline-lg text-on-surface">
-                Humidite du sol
+              <h3 className="font-headline-md text-headline-md text-on-surface">
+                État de la terre
               </h3>
               <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
-                {iot?.demo ? "Estimation de demonstration stable." : "Donnee issue du capteur IoT live."}
+                {iot?.demo ? "Valeur approximative." : "Mesure du jardin."}
               </p>
             </div>
-            <p className="font-display-lg text-display-lg-mobile md:text-display-lg text-primary">
-              {soilHumidity == null ? "Aucune donnee" : `${soilHumidity} %`}
+            <p className={`font-headline-lg text-headline-lg ${soilState.textClass}`}>
+              {soilState.label}
             </p>
           </div>
 
-          <div className="mt-lg h-6 w-full rounded-full bg-surface-container overflow-hidden">
+          <div className="mt-md h-3 w-full rounded-full bg-surface-container overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary transition-all duration-500"
+              className={`h-full rounded-full ${soilState.barClass} transition-all duration-500`}
               style={{ width: `${soilHumidity == null ? 0 : Math.min(Math.max(soilHumidity, 0), 100)}%` }}
             />
           </div>
           <div className="flex justify-between mt-sm font-label-lg text-label-lg text-on-surface-variant opacity-70">
-            <span>Sec</span>
-            <span>Ideal</span>
+            <span>Sol sec</span>
+            <span>Sol correct</span>
             <span>Humide</span>
           </div>
+        </section>
+
+        <section className="bg-surface-container-low rounded-2xl p-md md:p-lg">
+          <h3 className="font-headline-md text-headline-md text-on-surface">Dernier point</h3>
+          <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
+            {summary.history}
+          </p>
         </section>
       </div>
     </GardenShell>
   );
 }
 
+const toneStyles: Record<SummaryTone, {
+  hero: string;
+  border: string;
+  badgeBg: string;
+  badgeText: string;
+}> = {
+  ok: {
+    hero: "bg-primary-container text-on-primary-container",
+    border: "border-primary",
+    badgeBg: "bg-primary-fixed",
+    badgeText: "text-on-primary-fixed"
+  },
+  water: {
+    hero: "bg-tertiary-container text-on-tertiary-container",
+    border: "border-tertiary",
+    badgeBg: "bg-tertiary-fixed",
+    badgeText: "text-on-tertiary-fixed"
+  },
+  watch: {
+    hero: "bg-secondary-container text-on-secondary-container",
+    border: "border-secondary",
+    badgeBg: "bg-secondary-fixed",
+    badgeText: "text-on-secondary-fixed"
+  },
+  urgent: {
+    hero: "bg-error-container text-on-error-container",
+    border: "border-error",
+    badgeBg: "bg-error",
+    badgeText: "text-on-error"
+  }
+};
+
 function buildKpis(
   weather: WeatherResponse | null,
   iot: IotLiveResponse | null,
-  profile: GardenProfile,
   status: LoadState
 ) {
   const loading = status === "loading";
@@ -225,33 +285,23 @@ function buildKpis(
   return [
     {
       icon: "device_thermostat",
-      label: "Temperature",
-      value: loading ? "..." : realWeather ? formatTemperature(weather.temp_actuelle) : "Indispo",
-      span: false
+      label: "Température",
+      value: loading ? "..." : realWeather ? formatTemperature(weather.temp_actuelle) : "Non disponible"
     },
     {
       icon: "water_drop",
-      label: "Humidite sol",
-      value: loading ? "..." : iot?.soil_humidity == null ? "Indispo" : `${iot.soil_humidity} %`,
-      span: false
+      label: "Terre humide",
+      value: loading ? "..." : iot?.soil_humidity == null ? "Non disponible" : `${Math.round(iot.soil_humidity)} %`
     },
     {
       icon: "rainy",
-      label: "Pluie 7j",
-      value: loading ? "..." : realWeather ? formatRain(weather) : "Indispo",
-      span: false
+      label: "Pluie cette semaine",
+      value: loading ? "..." : realWeather ? formatRain(weather) : "Non disponible"
     },
     {
       icon: "ac_unit",
-      label: "Risque gel",
-      value: loading ? "..." : realWeather ? (weather.risque_gel_7j ? "Oui" : "Non") : "Indispo",
-      span: false
-    },
-    {
-      icon: "sprinkler",
-      label: "Irrigation",
-      value: loading ? "..." : formatIrrigation(iot?.demo ? profile.irrigation : iot?.irrigation ?? profile.irrigation),
-      span: true
+      label: "Risque de gel",
+      value: loading ? "..." : realWeather ? (weather.risque_gel_7j ? "Oui" : "Non") : "Non disponible"
     }
   ];
 }
@@ -259,48 +309,145 @@ function buildKpis(
 function buildSummary(
   weather: WeatherResponse | null,
   iot: IotLiveResponse | null,
+  advice: WateringAdviceResponse | null,
   status: LoadState
 ) {
   if (status === "loading") {
     return {
-      title: "Chargement des donnees du potager.",
-      recommendation: "Actualisation en cours.",
-      detail: "La meteo et les capteurs sont en train d'etre lus."
+      tone: "watch" as SummaryTone,
+      icon: "hourglass_top",
+      badge: "Lecture du jardin",
+      title: "On regarde le potager",
+      reason: "Les informations arrivent dans quelques instants.",
+      nextStep: "Attendre quelques secondes",
+      detail: "La page se met à jour toute seule.",
+      history: "Dernier point en cours de préparation."
     };
   }
 
   if (!weather) {
     return {
-      title: "Donnees meteo indisponibles.",
-      recommendation: "Verifiez l'API ou la localisation.",
-      detail: "Aucune valeur fictive n'est affichee sur le dashboard."
+      tone: "watch" as SummaryTone,
+      icon: "cloud_off",
+      badge: "À surveiller",
+      title: "On attend la météo",
+      reason: "Les informations météo ne sont pas encore revenues.",
+      nextStep: "Vérifier le potager normalement",
+      detail: "Aucune action urgente n'est indiquée pour le moment.",
+      history: "Dernier point incomplet : la météo n'est pas disponible."
     };
   }
 
+  const hasRealData = weather.source === "open_meteo";
+
+  // Priorité 1 : Risque de gel (critique pour les plants)
   if (weather.risque_gel_7j) {
     return {
-      title: "Risque de gel detecte pour les tomates.",
-      recommendation: "Attendre avant de planter.",
-      detail: `Minimum prevu sur 7 jours : ${formatTemperature(weather.temp_min_7j)}.`
+      tone: "urgent" as SummaryTone,
+      icon: "ac_unit",
+      badge: "Urgent",
+      title: "Attention au gel",
+      reason: "Le froid arrive et les plants peuvent souffrir.",
+      nextStep: "Protéger les plants ou attendre avant de planter",
+      detail: `Température la plus basse prévue : ${formatTemperature(weather.temp_min_7j)}.`,
+      history: "Dernier point : risque de gel à surveiller en priorité."
     };
   }
 
-  if (iot?.soil_humidity != null && iot.soil_humidity < 35 && !weather.pluie_7j) {
+  if (advice) {
+    return buildActionSummary(weather, iot, advice, hasRealData);
+  }
+
+  const soilHumidity = iot?.soil_humidity;
+
+  return {
+    tone: weather.pluie_7j ? "ok" as SummaryTone : "watch" as SummaryTone,
+    icon: weather.pluie_7j ? "rainy" : "visibility",
+    badge: weather.pluie_7j ? "Tout va bien" : "À surveiller",
+    title: weather.pluie_7j ? "Attendre avant d'arroser" : "Surveiller aujourd'hui",
+    reason: soilHumidity != null
+      ? `La terre est à ${Math.round(soilHumidity)} %${weather.pluie_7j ? " et la pluie est prévue." : "."}`
+      : "Il manque l'information sur la terre.",
+    nextStep: weather.pluie_7j ? "Laisser la pluie faire" : "Regarder la terre plus tard",
+    detail: hasRealData
+      ? `Température actuelle : ${formatTemperature(weather.temp_actuelle)}.`
+      : "Les informations sont partielles pour le moment.",
+    history: "Dernier point : pas de conseil détaillé disponible."
+  };
+}
+
+function buildActionSummary(
+  weather: WeatherResponse,
+  iot: IotLiveResponse | null,
+  advice: WateringAdviceResponse,
+  hasRealData: boolean
+) {
+  const soilText = iot?.soil_humidity != null ? `La terre est à ${Math.round(iot.soil_humidity)} %.` : "";
+  const rainText = weather.pluie_7j ? "De la pluie est prévue cette semaine." : "Aucune pluie n'est prévue.";
+  const detail = `${humanizeAction(advice.recommandation_action)} ${humanizeCheck(advice.prochaine_verification)}`;
+  const history = `${humanizeAdvice(advice.conseil)} ${hasRealData ? rainText : "Les informations sont partielles."}`;
+
+  if (advice.priorite === "urgent") {
     return {
-      title: "Le sol est trop sec.",
-      recommendation: "Prevoir un arrosage.",
-      detail: `Humidite mesuree : ${iot.soil_humidity} %. Aucune pluie significative n'est prevue.`
+      tone: "urgent" as SummaryTone,
+      icon: "water_drop",
+      badge: "Urgent",
+      title: "Arroser maintenant",
+      reason: soilText || "La terre manque d'eau.",
+      nextStep: "Arroser dès que possible",
+      detail,
+      history
+    };
+  }
+
+  if (advice.priorite === "eleve") {
+    return {
+      tone: "water" as SummaryTone,
+      icon: "water_drop",
+      badge: "À faire",
+      title: "Arroser aujourd'hui",
+      reason: `${soilText} ${rainText}`.trim(),
+      nextStep: "Prévoir un arrosage",
+      detail,
+      history
+    };
+  }
+
+  if (advice.priorite === "moyen") {
+    return {
+      tone: "watch" as SummaryTone,
+      icon: "visibility",
+      badge: "À surveiller",
+      title: advice.conseil.toLowerCase().includes("pluie") ? "Attendre la pluie" : "Surveiller aujourd'hui",
+      reason: `${soilText} ${rainText}`.trim(),
+      nextStep: "Regarder l'évolution du jardin",
+      detail,
+      history
+    };
+  }
+
+  if (advice.conseil.toLowerCase().includes("reporter") || advice.conseil.toLowerCase().includes("pluie")) {
+    return {
+      tone: "ok" as SummaryTone,
+      icon: "rainy",
+      badge: "Tout va bien",
+      title: "Attendre avant d'arroser",
+      reason: `${soilText} ${rainText}`.trim(),
+      nextStep: "Ne pas arroser pour le moment",
+      detail,
+      history
     };
   }
 
   return {
-    title: weather.source === "open_meteo"
-      ? `Temperature actuelle : ${formatTemperature(weather.temp_actuelle)}.`
-      : "Meteo reelle indisponible.",
-    recommendation: weather.pluie_7j ? "Surveiller la pluie avant d'arroser." : "Conditions meteo correctes.",
-    detail: weather.source === "open_meteo"
-      ? `Moyenne 7 jours : ${formatTemperature(weather.temp_moyenne_7j)}. Pluie estimee : ${weather.precipitation_7j} mm.`
-      : "Aucune temperature fictive n'est presentee comme une vraie mesure."
+    tone: "ok" as SummaryTone,
+    icon: "check_circle",
+    badge: "Tout va bien",
+    title: "Rien à faire aujourd'hui",
+    reason: soilText || "Le potager est dans un état correct.",
+    nextStep: "Continuer la surveillance habituelle",
+    detail,
+    history
   };
 }
 
@@ -319,13 +466,61 @@ function formatRain(weather: WeatherResponse) {
   return `${weather.precipitation_7j} mm`;
 }
 
-function formatIrrigation(value?: IotLiveResponse["irrigation"] | null) {
+function getSoilState(value: number | null) {
+  if (value == null) {
+    return {
+      label: "Pas d'information pour l'instant",
+      textClass: "text-on-surface-variant",
+      barClass: "bg-outline"
+    };
+  }
+
+  if (value < 35) {
+    return {
+      label: "Sol sec",
+      textClass: "text-tertiary",
+      barClass: "bg-tertiary"
+    };
+  }
+
+  if (value > 75) {
+    return {
+      label: "Sol humide",
+      textClass: "text-primary",
+      barClass: "bg-primary"
+    };
+  }
+
   return {
-    manuel: "Manuel",
-    goutte_a_goutte: "Goutte",
-    automatique: "Auto",
-    aucun: "Aucune"
-  }[value ?? "aucun"];
+    label: "Sol correct",
+    textClass: "text-primary",
+    barClass: "bg-primary"
+  };
+}
+
+function humanizeAdvice(value: string) {
+  return value
+    .replace("Reporter l'arrosage - Pluie prevue", "Arrosage reporté : pluie prévue.")
+    .replace("Aucun arrosage necessaire - Sol sature", "Pas d'arrosage : la terre est très humide.")
+    .replace("Aucun arrosage necessaire - Sol bien hydrate", "Pas d'arrosage : la terre est bien humide.")
+    .replace("Sol en bon etat - Surveillance reguliere", "La terre est en bon état.");
+}
+
+function humanizeAction(value: string) {
+  return value
+    .replace("Arroser immediatement", "Arroser dès que possible")
+    .replace("Pas d'arrosage necessaire", "Pas besoin d'arroser")
+    .replace("Reverifier", "Revérifier")
+    .replace("reevaluer", "regarder de nouveau")
+    .replace("Completer", "Compléter")
+    .replace("m2", "m²");
+}
+
+function humanizeCheck(value: string) {
+  return value
+    .replace("Verifier", "Vérifier")
+    .replace("Reverifier", "Revérifier")
+    .replace("apres", "après");
 }
 
 function readLocalProfile(): GardenProfile {

@@ -164,3 +164,31 @@ class ModelVersion(BaseModel):
     accuracy: float | None = None
     f1_macro: float | None = None
     notes: str | None = None
+
+
+class WateringAdviceRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    location: str = Field(default="Rennes", min_length=1, max_length=120)
+    saison: Season | None = None
+    type_sol: SoilType = Field(default="limoneux")
+    irrigation: IrrigationType = Field(default="manuel")
+    humidite_sol: float | None = Field(default=None, ge=0, le=100)
+    temp_actuelle: float | None = None
+    temp_min_7j: float | None = None
+    temp_moyenne_7j: float | None = None
+    pluie_7j: bool | None = None
+    risque_gel_7j: bool | None = None
+    precipitation_7j: float | None = None
+    water_usage: float | None = None
+
+
+class WateringAdviceResponse(BaseModel):
+    conseil: str
+    priorite: Literal["urgent", "eleve", "moyen", "faible", "aucun"]
+    explication: str
+    facteurs_cles: list[str]
+    score_stress_hydrique: float = Field(..., ge=0, le=100)
+    score_risque_secheresse: float = Field(..., ge=0, le=100)
+    recommandation_action: str
+    prochaine_verification: str

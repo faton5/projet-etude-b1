@@ -202,3 +202,38 @@ export function formatRecommendation(value: Recommendation) {
     non_viable: "Ne pas planter"
   }[value];
 }
+
+export type WateringAdviceResponse = {
+  conseil: string;
+  priorite: "urgent" | "eleve" | "moyen" | "faible" | "aucun";
+  explication: string;
+  facteurs_cles: string[];
+  score_stress_hydrique: number;
+  score_risque_secheresse: number;
+  recommandation_action: string;
+  prochaine_verification: string;
+};
+
+export async function getWateringAdvice(params: {
+  location: string;
+  type_sol: string;
+  irrigation: string;
+  humidite_sol?: number;
+  temp_actuelle?: number;
+  temp_min_7j?: number;
+  temp_moyenne_7j?: number;
+  pluie_7j?: boolean;
+  precipitation_7j?: number;
+}): Promise<WateringAdviceResponse> {
+  const url = `${getApiUrl()}/advice/watering`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error("Conseil d'arrosage indisponible");
+  }
+  return response.json();
+}
