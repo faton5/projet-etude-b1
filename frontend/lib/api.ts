@@ -120,8 +120,13 @@ export async function createPrediction(payload: PredictionRequest): Promise<Pred
   return response.json();
 }
 
-export async function getWeather(): Promise<WeatherResponse> {
-  const response = await fetch(`${getApiUrl()}/weather`, {
+export async function getWeather(location?: string): Promise<WeatherResponse> {
+  const url = new URL(`${getApiUrl()}/weather`);
+  if (location?.trim()) {
+    url.searchParams.set("location", location.trim());
+  }
+
+  const response = await fetch(url.toString(), {
     cache: "no-store"
   });
   if (!response.ok) {

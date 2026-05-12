@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, CloudSun, Send } from "lucide-react";
 import {
@@ -36,6 +36,13 @@ export function PredictionForm() {
   const [pending, setPending] = useState(false);
   const [weatherPending, setWeatherPending] = useState(false);
 
+  useEffect(() => {
+    const savedLocation = window.localStorage.getItem("potager.location");
+    if (savedLocation) {
+      setPayload((current) => ({ ...current, location: savedLocation }));
+    }
+  }, []);
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -57,7 +64,13 @@ export function PredictionForm() {
     setWeatherError("");
 
     try {
-      const forecast = await getWeather();
+      const requestedLocation = payload.location.trim();
+      if (!requestedLocation) {
+        setWeatherError("Indiquez une ville avant de charger la meteo.");
+        return;
+      }
+
+      const forecast = await getWeather(requestedLocation);
       setWeather(forecast);
       setPayload((current) => ({
         ...current,

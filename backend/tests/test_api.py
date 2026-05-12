@@ -154,6 +154,38 @@ def test_weather_forecast_maps_open_meteo_to_prediction_fields(monkeypatch):
     assert forecast.precipitation_probability_max == 55
 
 
+def test_weather_forecast_geocodes_custom_location(monkeypatch):
+    def fake_geocoding(location: str):
+        assert location == "Nantes"
+        return "Nantes, Pays de la Loire, France", 47.2184, -1.5536
+
+    def fake_fetch(latitude: float, longitude: float):
+        assert latitude == 47.2184
+        assert longitude == -1.5536
+        return {
+            "current": {
+                "temperature_2m": 18.2,
+            },
+            "daily": {
+                "temperature_2m_min": [9.0, 10.0, 8.5, 11.0, 12.0, 12.5, 13.0],
+                "temperature_2m_mean": [15.0, 16.0, 15.5, 17.0, 18.0, 18.5, 19.0],
+                "precipitation_sum": [0, 0, 0, 0, 0, 0, 0],
+                "precipitation_probability_max": [10, 15, 15, 20, 20, 10, 5],
+            }
+        }
+
+    monkeypatch.setattr("app.weather._fetch_open_meteo_geocoding", fake_geocoding)
+    monkeypatch.setattr("app.weather._fetch_open_meteo", fake_fetch)
+
+    forecast = get_weather_forecast(location="Nantes")
+
+    assert forecast.location == "Nantes, Pays de la Loire, France"
+    assert forecast.latitude == 47.2184
+    assert forecast.longitude == -1.5536
+    assert forecast.temp_actuelle == 18.2
+    assert forecast.pluie_7j is False
+
+
 def test_weather_route_returns_503_when_forecast_is_unavailable(monkeypatch):
     def fail_forecast(**_kwargs):
         raise WeatherServiceError("unavailable")

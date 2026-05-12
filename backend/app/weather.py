@@ -15,6 +15,7 @@ DAILY_VARIABLES = (
     "precipitation_probability_max",
 )
 DEFAULT_FORECAST_DAYS = 7
+DEFAULT_GEOCODING_COUNT = 1
 RAIN_THRESHOLD_MM = 1.0
 RAIN_PROBABILITY_THRESHOLD = 50
 FROST_THRESHOLD_C = 0.0
@@ -40,14 +41,28 @@ def get_open_meteo_base_url() -> str:
     return get_settings().open_meteo_base_url
 
 
+def get_open_meteo_geocoding_url() -> str:
+    return get_settings().open_meteo_geocoding_url
+
+
 def get_weather_forecast(
     location: str | None = None,
     latitude: float | None = None,
     longitude: float | None = None,
 ) -> WeatherResponse:
-    resolved_location = location or get_default_location()
-    resolved_latitude = latitude if latitude is not None else get_default_latitude()
-    resolved_longitude = longitude if longitude is not None else get_default_longitude()
+    requested_location = (location or get_default_location()).strip()
+
+    try:
+        resolved_location, resolved_latitude, resolved_longitude = _resolve_weather_target(
+            location=requested_location,
+            latitude=latitude,
+            longitude=longitude,
+            should_geocode=location is not None,
+        )
+    except WeatherServiceError:
+        if get_settings().demo_mode:
+            return fallback_weather(requested_location, get_default_latitude(), get_default_longitude())
+        raise
 
     try:
         data = _fetch_open_meteo(resolved_latitude, resolved_longitude)
@@ -68,6 +83,26 @@ def get_weather_forecast(
     )
 
 
+def _resolve_weather_target(
+    location: str,
+    latitude: float | None,
+    longitude: float | None,
+    should_geocode: bool,
+) -> tuple[str, float, float]:
+    if latitude is not None and longitude is not None:
+        return location, latitude, longitude
+
+    default_location = get_default_location()
+    if should_geocode and location.lower() != default_location.lower():
+        return _fetch_open_meteo_geocoding(location)
+
+    return (
+        location or default_location,
+        latitude if latitude is not None else get_default_latitude(),
+        longitude if longitude is not None else get_default_longitude(),
+    )
+
+
 def _fetch_open_meteo(latitude: float, longitude: float) -> dict[str, Any]:
     params = {
         "latitude": latitude,
@@ -85,6 +120,49 @@ def _fetch_open_meteo(latitude: float, longitude: float) -> dict[str, Any]:
             return response.json()
     except (httpx.HTTPError, ValueError) as exc:
         raise WeatherServiceError("Open-Meteo forecast is unavailable") from exc
+
+
+def _fetch_open_meteo_geocoding(location: str) -> tuple[str, float, float]:
+    params = {
+        "name": location,
+        "count": DEFAULT_GEOCODING_COUNT,
+        "language": "fr",
+        "format": "json",
+    }
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            response = client.get(get_open_meteo_geocoding_url(), params=params)
+            response.raise_for_status()
+            data = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise WeatherServiceError("Open-Meteo geocoding is unavailable") from exc
+
+    results = data.get("results")
+    if not isinstance(results, list) or not results:
+        raise WeatherServiceError(f"Location not found: {location}")
+
+    first = results[0]
+    if not isinstance(first, dict):
+        raise WeatherServiceError("Open-Meteo geocoding result has an invalid format")
+
+    try:
+        latitude = float(first["latitude"])
+        longitude = float(first["longitude"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WeatherServiceError("Open-Meteo geocoding result is missing coordinates") from exc
+
+    display_name = _format_location_name(first, location)
+    return display_name, latitude, longitude
+
+
+def _format_location_name(result: dict[str, Any], fallback: str) -> str:
+    parts = [
+        str(result[key]).strip()
+        for key in ("name", "admin1", "country")
+        if result.get(key)
+    ]
+    return ", ".join(parts) if parts else fallback
 
 
 def _build_weather_response(

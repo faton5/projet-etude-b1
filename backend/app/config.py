@@ -11,6 +11,7 @@ class Settings:
     db_path: Path
     cors_origins: list[str]
     open_meteo_base_url: str
+    open_meteo_geocoding_url: str
     default_location: str
     default_latitude: float
     default_longitude: float
@@ -35,6 +36,10 @@ def get_settings() -> Settings:
         open_meteo_base_url=os.getenv(
             "OPEN_METEO_BASE_URL",
             "https://api.open-meteo.com/v1/forecast",
+        ),
+        open_meteo_geocoding_url=os.getenv(
+            "OPEN_METEO_GEOCODING_URL",
+            "https://geocoding-api.open-meteo.com/v1/search",
         ),
         default_location=os.getenv("DEFAULT_LOCATION", "Rennes"),
         default_latitude=float(os.getenv("DEFAULT_LATITUDE", "48.1173")),

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { BarChart3, History, Settings, Sprout } from "lucide-react";
 
 const links = [
-  { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
+  { href: "/dashboard", label: "Tableau de bord", icon: BarChart3 },
   { href: "/predict", label: "Prediction", icon: Sprout },
   { href: "/history", label: "Historique", icon: History },
   { href: "/settings", label: "Reglages", icon: Settings }

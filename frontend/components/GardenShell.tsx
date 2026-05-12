@@ -13,8 +13,8 @@ export function GardenShell({
       {/* SideNavBar desktop */}
       <nav className="hidden md:flex flex-col h-screen py-xl px-md gap-lg bg-surface-container-low shadow-sm fixed top-0 left-0 w-64 z-10">
         <div className="mb-lg">
-          <h1 className="font-headline-lg text-headline-lg text-primary">Oak Ridge Care</h1>
-          <p className="font-body-md text-body-md text-on-surface-variant opacity-70">North Garden Wing</p>
+          <h1 className="font-headline-lg text-headline-lg text-primary">Potager EHPAD</h1>
+          <p className="font-body-md text-body-md text-on-surface-variant opacity-70">Jardin des tomates</p>
         </div>
         <ul className="flex flex-col gap-sm">
           <li>
@@ -32,7 +32,7 @@ export function GardenShell({
               >
                 home
               </span>
-              <span className="font-label-lg text-label-lg">Home</span>
+              <span className="font-label-lg text-label-lg">Accueil</span>
             </Link>
           </li>
           <li>
@@ -50,19 +50,19 @@ export function GardenShell({
               >
                 settings
               </span>
-              <span className="font-label-lg text-label-lg">Settings</span>
+              <span className="font-label-lg text-label-lg">Reglages</span>
             </Link>
           </li>
         </ul>
         <div className="mt-auto flex items-center gap-sm pt-md border-t border-surface-variant">
           <span className="material-symbols-outlined text-[32px] text-tertiary">account_circle</span>
-          <span className="font-label-lg text-label-lg">Staff Profile</span>
+          <span className="font-label-lg text-label-lg">Profil equipe</span>
         </div>
       </nav>
 
       {/* TopAppBar mobile */}
       <header className="flex justify-between items-center w-full px-container-margin py-md bg-background sticky top-0 z-40 md:hidden">
-        <div className="font-headline-md text-headline-md font-bold text-primary">GardenCare</div>
+        <div className="font-headline-md text-headline-md font-bold text-primary">Potager EHPAD</div>
         <button className="text-on-surface-variant opacity-60 hover:opacity-100 transition-opacity">
           <span className="material-symbols-outlined text-[28px]">person</span>
         </button>
@@ -87,7 +87,7 @@ export function GardenShell({
           >
             home
           </span>
-          <span className="text-xs font-label-lg mt-1">Home</span>
+          <span className="text-xs font-label-lg mt-1">Accueil</span>
         </Link>
         <Link
           href="/settings"
@@ -101,7 +101,7 @@ export function GardenShell({
           >
             settings
           </span>
-          <span className="text-xs font-label-lg mt-1">Settings</span>
+          <span className="text-xs font-label-lg mt-1">Reglages</span>
         </Link>
       </nav>
     </div>

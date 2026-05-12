@@ -29,6 +29,7 @@ services:
       POTAGER_DB_PATH: /data/potager.db
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       OPEN_METEO_BASE_URL: https://api.open-meteo.com/v1/forecast
+      OPEN_METEO_GEOCODING_URL: https://geocoding-api.open-meteo.com/v1/search
       DEFAULT_LOCATION: ${DEFAULT_LOCATION:-Rennes}
       DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-48.1173}
       DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:--1.6778}

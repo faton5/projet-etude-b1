@@ -63,6 +63,7 @@ Variables importantes :
 - `POTAGER_DB_PATH=/data/potager.db`
 - `CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
 - `OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast`
+- `OPEN_METEO_GEOCODING_URL=https://geocoding-api.open-meteo.com/v1/search`
 - `MQTT_HOST=mqtt`
 - `MQTT_PORT=1883`
 - `MQTT_TOPIC_ROOT=farm/tomato`

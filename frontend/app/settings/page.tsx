@@ -1,37 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GardenShell } from "@/components/GardenShell";
 
 type SoilType = "clay" | "sand" | "silt";
 type IrrigationMode = "manuel" | "automatique";
 
 const soilOptions: { id: SoilType; icon: string; label: string }[] = [
-  { id: "clay", icon: "texture", label: "Clay" },
-  { id: "sand", icon: "grain", label: "Sand" },
-  { id: "silt", icon: "waves", label: "Silt" }
+  { id: "clay", icon: "texture", label: "Argileux" },
+  { id: "sand", icon: "grain", label: "Sableux" },
+  { id: "silt", icon: "waves", label: "Limoneux" }
 ];
 
 const notifOptions = [
-  { key: "watering" as const, label: "Watering Reminders", desc: "Get notified when plants need water." },
-  { key: "weather" as const, label: "Weather Alerts", desc: "Frost or heat wave warnings." },
-  { key: "harvest" as const, label: "Harvest Ready", desc: "Alerts for ripe produce." }
+  { key: "watering" as const, label: "Rappels d'arrosage", desc: "Etre prevenu quand les plants manquent d'eau." },
+  { key: "weather" as const, label: "Alertes meteo", desc: "Suivi du gel, de la pluie et des fortes chaleurs." },
+  { key: "harvest" as const, label: "Recolte prete", desc: "Alertes lorsque les tomates arrivent a maturite." }
 ];
 
 export default function SettingsPage() {
+  const [location, setLocation] = useState("Rennes");
   const [soilType, setSoilType] = useState<SoilType>("clay");
   const [irrigation, setIrrigation] = useState<IrrigationMode>("manuel");
   const [notifications, setNotifications] = useState({ watering: true, weather: false, harvest: true });
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const savedLocation = window.localStorage.getItem("potager.location");
+    if (savedLocation) {
+      setLocation(savedLocation);
+    }
+  }, []);
+
+  function savePreferences() {
+    window.localStorage.setItem("potager.location", location.trim() || "Rennes");
+    window.localStorage.setItem("potager.soilType", soilType);
+    window.localStorage.setItem("potager.irrigation", irrigation);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2500);
+  }
 
   return (
     <GardenShell active="settings">
       <div className="p-container-margin md:p-xl max-w-5xl mx-auto w-full">
         <div className="mb-lg">
           <h1 className="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface mb-xs">
-            Settings
+            Reglages
           </h1>
           <p className="font-body-lg text-body-lg text-on-surface-variant">
-            Manage your garden preferences and alerts.
+            Configurez le potager, la localisation et les alertes.
           </p>
         </div>
 
@@ -47,19 +64,26 @@ export default function SettingsPage() {
                 <h2 className="font-headline-md text-headline-md text-on-surface">Localisation</h2>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mb-4">
-                Set your region for accurate weather and planting data.
+                Saisissez librement la ville ou le lieu du potager pour la meteo et les predictions.
               </p>
-              <div className="relative">
-                <select className="w-full appearance-none bg-surface border-b-2 border-primary text-on-surface font-body-md text-body-md py-3 px-4 rounded-t-md shadow-sm focus:outline-none">
-                  <option>Paris, Île-de-France</option>
-                  <option>Lyon, Auvergne-Rhône-Alpes</option>
-                  <option>Marseille, Provence-Alpes-Côte d&apos;Azur</option>
-                  <option>Bordeaux, Nouvelle-Aquitaine</option>
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
-                  <span className="material-symbols-outlined">arrow_drop_down</span>
-                </div>
-              </div>
+              <label className="grid gap-2">
+                <span className="font-label-lg text-label-lg text-on-surface-variant">Ville ou adresse</span>
+                <input
+                  className="w-full bg-surface border-b-2 border-primary text-on-surface font-body-md text-body-md py-3 px-4 rounded-t-md shadow-sm focus:outline-none"
+                  list="location-suggestions"
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  placeholder="Ex : Rennes, Nantes, EHPAD Les Jardins..."
+                />
+              </label>
+              <datalist id="location-suggestions">
+                <option value="Rennes" />
+                <option value="Paris" />
+                <option value="Lyon" />
+                <option value="Marseille" />
+                <option value="Bordeaux" />
+                <option value="Nantes" />
+              </datalist>
             </section>
 
             {/* Type de sol */}
@@ -71,7 +95,7 @@ export default function SettingsPage() {
                 <h2 className="font-headline-md text-headline-md text-on-surface">Type de sol</h2>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mb-4">
-                Select the primary soil type in your garden.
+                Selectionnez le type de sol principal du potager.
               </p>
               <div className="grid grid-cols-3 gap-md">
                 {soilOptions.map((s) => (
@@ -104,7 +128,7 @@ export default function SettingsPage() {
                 <h2 className="font-headline-md text-headline-md text-on-surface">Mode irrigation</h2>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mb-4">
-                Choose how you manage watering.
+                Choisissez comment l&apos;arrosage est gere.
               </p>
               <div className="flex bg-surface-container p-1 rounded-lg">
                 {(["manuel", "automatique"] as const).map((mode) => (
@@ -117,7 +141,7 @@ export default function SettingsPage() {
                         : "text-on-surface-variant hover:text-on-surface"
                     }`}
                   >
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    {mode === "manuel" ? "Manuel" : "Automatique"}
                   </button>
                 ))}
               </div>
@@ -165,22 +189,32 @@ export default function SettingsPage() {
               <div className="flex items-start gap-sm mb-md">
                 <span className="material-symbols-outlined text-primary text-3xl">eco</span>
                 <div>
-                  <h3 className="font-status-msg text-status-msg text-on-surface">Garden Health</h3>
+                  <h3 className="font-status-msg text-status-msg text-on-surface">Sante du potager</h3>
                   <p className="font-body-md text-body-md text-on-surface-variant mt-2">
-                    Your settings help us provide the most accurate recommendations for a thriving garden.
-                    Ensure your region and soil type are up to date for the best results.
+                    Ces reglages aident a produire des recommandations plus adaptees au potager.
+                    Verifiez surtout la localisation et le type de sol.
                   </p>
                 </div>
               </div>
               <div className="mt-lg pt-md border-t border-outline-variant">
-                <button className="w-full bg-primary hover:bg-primary-container text-on-primary font-label-lg text-label-lg py-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-sm min-h-[56px]">
+                <button
+                  onClick={savePreferences}
+                  className="w-full bg-primary hover:bg-primary-container text-on-primary font-label-lg text-label-lg py-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-sm min-h-[56px]"
+                >
                   <span className="material-symbols-outlined">save</span>
-                  Save Preferences
+                  {saved ? "Preferences enregistrees" : "Enregistrer"}
                 </button>
               </div>
             </div>
           </div>
         </div>
+        <button
+          onClick={savePreferences}
+          className="mt-lg flex w-full items-center justify-center gap-sm rounded-lg bg-primary py-4 font-label-lg text-label-lg text-on-primary shadow-sm transition-colors hover:bg-primary-container md:hidden"
+        >
+          <span className="material-symbols-outlined">save</span>
+          {saved ? "Preferences enregistrees" : "Enregistrer"}
+        </button>
       </div>
     </GardenShell>
   );
