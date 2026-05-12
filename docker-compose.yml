@@ -81,6 +81,8 @@ services:
         condition: service_healthy
     networks:
       - potager_net
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
   frontend:
