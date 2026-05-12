@@ -15,6 +15,8 @@ import {
 
 type LoadState = "loading" | "ready" | "error";
 type SummaryTone = "ok" | "water" | "watch" | "urgent";
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
+const WEATHER_RETRY_MS = 2 * 60 * 1000;
 
 export default function DashboardPage() {
   const retryTimeout = useRef<number | null>(null);
@@ -41,11 +43,13 @@ export default function DashboardPage() {
     clearWeatherRetry();
     retryTimeout.current = window.setTimeout(() => {
       loadDashboard(currentProfile);
-    }, 10000);
+    }, WEATHER_RETRY_MS);
   }
 
-  async function loadDashboard(currentProfile = profile) {
-    setStatus("loading");
+  async function loadDashboard(currentProfile = profile, showLoading = false) {
+    if (showLoading) {
+      setStatus("loading");
+    }
     setError("");
 
     const [forecastResult, liveResult] = await Promise.allSettled([
@@ -110,7 +114,7 @@ export default function DashboardPage() {
     let activeProfile = readLocalProfile();
     setProfile(activeProfile);
     setLocation(activeProfile.location);
-    loadDashboard(activeProfile);
+    loadDashboard(activeProfile, true);
 
     getGardenProfile()
       .then((apiProfile) => {
@@ -124,7 +128,7 @@ export default function DashboardPage() {
 
     const interval = window.setInterval(() => {
       loadDashboard(activeProfile);
-    }, 60000);
+    }, AUTO_REFRESH_MS);
 
     return () => {
       window.clearInterval(interval);
