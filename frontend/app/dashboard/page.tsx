@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GardenShell } from "@/components/GardenShell";
 import {
   getGardenProfile,
@@ -14,6 +14,7 @@ import {
 type LoadState = "loading" | "ready" | "error";
 
 export default function DashboardPage() {
+  const retryTimeout = useRef<number | null>(null);
   const [location, setLocation] = useState("Rennes");
   const [profile, setProfile] = useState<GardenProfile>({
     location: "Rennes",
@@ -25,21 +26,56 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<LoadState>("loading");
   const [error, setError] = useState("");
 
+  function clearWeatherRetry() {
+    if (retryTimeout.current) {
+      window.clearTimeout(retryTimeout.current);
+      retryTimeout.current = null;
+    }
+  }
+
+  function scheduleWeatherRetry(currentProfile: GardenProfile) {
+    clearWeatherRetry();
+    retryTimeout.current = window.setTimeout(() => {
+      loadDashboard(currentProfile);
+    }, 10000);
+  }
+
   async function loadDashboard(currentProfile = profile) {
     setStatus("loading");
     setError("");
 
-    try {
-      const [forecast, live] = await Promise.all([
-        getWeather(currentProfile.location),
-        getIotLive()
-      ]);
+    const [forecastResult, liveResult] = await Promise.allSettled([
+      getWeather(currentProfile.location),
+      getIotLive()
+    ]);
+
+    if (forecastResult.status === "fulfilled") {
+      const forecast = forecastResult.value;
       setWeather(forecast);
+      if (isRealWeather(forecast)) {
+        clearWeatherRetry();
+      } else {
+        setError("Meteo reelle temporairement indisponible. Nouvelle tentative automatique.");
+        scheduleWeatherRetry(currentProfile);
+      }
+    } else {
+      setWeather(null);
+      setError("Meteo reelle indisponible. Nouvelle tentative automatique.");
+      scheduleWeatherRetry(currentProfile);
+    }
+
+    if (liveResult.status === "fulfilled") {
+      const live = liveResult.value;
       setIot(live);
+    } else {
+      setIot(null);
+      setError((current) => current || "Impossible de charger les donnees des capteurs.");
+    }
+
+    if (forecastResult.status === "fulfilled" || liveResult.status === "fulfilled") {
       setStatus("ready");
-    } catch {
+    } else {
       setStatus("error");
-      setError("Impossible de charger les donnees en direct.");
     }
   }
 
@@ -63,7 +99,10 @@ export default function DashboardPage() {
       loadDashboard(activeProfile);
     }, 60000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      clearWeatherRetry();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -73,7 +112,7 @@ export default function DashboardPage() {
   const lastUpdate = iot?.last_update
     ? new Date(iot.last_update).toLocaleTimeString("fr-FR")
     : weather
-      ? "Meteo chargee"
+      ? isRealWeather(weather) ? "Meteo chargee" : "Meteo indispo"
       : "En attente";
 
   return (
@@ -181,12 +220,13 @@ function buildKpis(
   status: LoadState
 ) {
   const loading = status === "loading";
+  const realWeather = isRealWeather(weather);
 
   return [
     {
       icon: "device_thermostat",
       label: "Temperature",
-      value: loading ? "..." : weather ? formatTemperature(weather.temp_actuelle) : "Indispo",
+      value: loading ? "..." : realWeather ? formatTemperature(weather.temp_actuelle) : "Indispo",
       span: false
     },
     {
@@ -198,13 +238,13 @@ function buildKpis(
     {
       icon: "rainy",
       label: "Pluie 7j",
-      value: loading ? "..." : weather ? formatRain(weather) : "Indispo",
+      value: loading ? "..." : realWeather ? formatRain(weather) : "Indispo",
       span: false
     },
     {
       icon: "ac_unit",
       label: "Risque gel",
-      value: loading ? "..." : weather ? (weather.risque_gel_7j ? "Oui" : "Non") : "Indispo",
+      value: loading ? "..." : realWeather ? (weather.risque_gel_7j ? "Oui" : "Non") : "Indispo",
       span: false
     },
     {
@@ -266,6 +306,10 @@ function buildSummary(
 
 function formatTemperature(value: number) {
   return `${Math.round(value)}°C`;
+}
+
+function isRealWeather(weather: WeatherResponse | null): weather is WeatherResponse {
+  return weather?.source === "open_meteo";
 }
 
 function formatRain(weather: WeatherResponse) {

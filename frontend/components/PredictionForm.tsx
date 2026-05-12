@@ -83,6 +83,12 @@ export function PredictionForm() {
       }
 
       const forecast = await getWeather(requestedLocation);
+      if (forecast.source !== "open_meteo") {
+        setWeather(null);
+        setWeatherError("Meteo reelle indisponible. Gardez la saisie manuelle.");
+        return;
+      }
+
       setWeather(forecast);
       setPayload((current) => ({
         ...current,

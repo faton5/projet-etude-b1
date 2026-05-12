@@ -274,6 +274,18 @@ def test_iot_live_uses_profile_irrigation_in_demo_mode(monkeypatch):
     assert live.irrigation_active is False
 
 
+def test_iot_demo_snapshot_uses_profile_when_no_sensor_data(monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "true")
+    update_garden_profile(GardenProfile(location="Nantes", type_sol="sableux", irrigation="aucun"))
+
+    live = iot_live()
+
+    assert live.demo is True
+    assert live.soil_humidity == 44.0
+    assert live.water_usage == 0.0
+    assert live.irrigation == "aucun"
+
+
 def test_predict_with_iot_combines_weather_and_mqtt(monkeypatch):
     timestamp = "2026-05-11T18:00:00Z"
     iot_state.update(

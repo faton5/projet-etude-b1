@@ -105,7 +105,11 @@ class IotStateStore:
                 water_sensor_id=self._water_usage.sensor_id if self._water_usage else None,
             )
         if response.last_update is None and get_settings().demo_mode:
-            return demo_iot_snapshot(mqtt_connected=response.mqtt_connected)
+            return demo_iot_snapshot(
+                mqtt_connected=response.mqtt_connected,
+                soil_type=profile.type_sol,
+                irrigation=profile.irrigation,
+            )
         return response
 
     def _parse_payload(

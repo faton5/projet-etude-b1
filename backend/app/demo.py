@@ -2,15 +2,35 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.schemas import IotLiveResponse, WeatherResponse
+from app.schemas import IotLiveResponse, IrrigationType, SoilType, WeatherResponse
 
 
-def demo_iot_snapshot(mqtt_connected: bool = False) -> IotLiveResponse:
+DEMO_SOIL_HUMIDITY: dict[SoilType, float] = {
+    "argileux": 58.0,
+    "limoneux": 52.0,
+    "sableux": 44.0,
+    "calcaire": 48.0,
+    "humifere": 56.0,
+}
+
+DEMO_WATER_USAGE: dict[IrrigationType, float] = {
+    "aucun": 0.0,
+    "manuel": 4.0,
+    "goutte_a_goutte": 2.5,
+    "automatique": 3.5,
+}
+
+
+def demo_iot_snapshot(
+    mqtt_connected: bool = False,
+    soil_type: SoilType = "limoneux",
+    irrigation: IrrigationType = "manuel",
+) -> IotLiveResponse:
     now = datetime.now(UTC)
     return IotLiveResponse(
-        soil_humidity=52.0,
-        water_usage=0.0,
-        irrigation="goutte_a_goutte",
+        soil_humidity=DEMO_SOIL_HUMIDITY[soil_type],
+        water_usage=DEMO_WATER_USAGE[irrigation],
+        irrigation=irrigation,
         irrigation_active=False,
         mqtt_connected=mqtt_connected,
         mqtt_status="demo" if not mqtt_connected else "connected",
