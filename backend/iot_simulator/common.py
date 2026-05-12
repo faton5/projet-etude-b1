@@ -66,6 +66,7 @@ class WeatherSnapshot:
     temperature: float
     temperature_mean_7d: float
     precipitation_7d: float
+    precipitation_today: float  # Pluie du jour actuel (plus réaliste)
 
 
 class WeatherCache:
@@ -103,16 +104,22 @@ class WeatherCache:
                 temperature=random.uniform(12.0, 22.0),
                 temperature_mean_7d=random.uniform(11.0, 20.0),
                 precipitation_7d=random.uniform(0.0, 6.0),
+                precipitation_today=random.uniform(0.0, 2.0),  # Pluie du jour fallback
             )
 
         daily = data.get("daily", {})
         mean_temperatures = [float(v) for v in daily.get("temperature_2m_mean", []) if v is not None]
         precipitation = [float(v) for v in daily.get("precipitation_sum", []) if v is not None]
         current = data.get("current", {})
+
+        # Pluie du jour actuel (index 0) pour simulation réaliste
+        precipitation_today = float(precipitation[0]) if precipitation else 0.0
+
         return WeatherSnapshot(
             temperature=round(float(current.get("temperature_2m", 16.0)), 1),
             temperature_mean_7d=round(sum(mean_temperatures) / max(len(mean_temperatures), 1), 1),
             precipitation_7d=round(sum(precipitation), 1),
+            precipitation_today=round(precipitation_today, 1),
         )
 
 

@@ -1,8 +1,12 @@
-# Potager EHPAD - Tomate
+# 🍅 Potager EHPAD - Tomate V0
 
-Application V0 pour aider le personnel d'un EHPAD a savoir si les conditions sont favorables pour planter des tomates.
+Application intelligente pour aider le personnel d'un EHPAD à :
+1. **Savoir quand planter des tomates** (prédiction ML viable/attendre/non_viable)
+2. **Gérer l'arrosage efficacement** (conseils contextuels basés sur ML)
 
-La V0 combine un dashboard Next.js, une API FastAPI, un modele XGBoost, SQLite, Open-Meteo et une architecture IoT simulee avec MQTT/Mosquitto.
+La V0 combine un dashboard Next.js, une API FastAPI, un modèle XGBoost avec features engineered, SQLite, Open-Meteo et une architecture IoT simulée avec MQTT/Mosquitto.
+
+📚 **[Documentation complète](./docs/)** | 📋 **[Cahier des charges](./CDC.md)**
 
 ## Architecture
 
@@ -33,20 +37,36 @@ Capteurs Python simules
 ## Structure
 
 ```text
-backend/
-  app/                 # API, SQLite, MQTT consumer, meteo, prediction
-  iot_simulator/       # capteurs Python simules
-  models/              # modele XGBoost
-  tests/               # tests backend
-frontend/
-  app/                 # pages Next.js
-  components/          # composants UI
-  lib/                 # client API
-mosquitto/
-  mosquitto.conf       # config broker MQTT local
-CDC.md
-docker-compose.yml
-.env.example
+📁 projet-etude-/
+├── 📁 backend/
+│   ├── 📁 app/
+│   │   ├── main.py              # API FastAPI (routes)
+│   │   ├── ml_model.py          # XGBoost + features ML
+│   │   ├── recommendation.py    # Prédiction plantation
+│   │   ├── watering_advice.py   # Conseil arrosage (nouveau ✨)
+│   │   ├── weather.py           # Open-Meteo
+│   │   ├── mqtt_consumer.py     # Consumer MQTT
+│   │   ├── database.py          # SQLite
+│   │   ├── schemas.py           # Pydantic models
+│   │   └── ...
+│   ├── 📁 iot_simulator/        # Capteurs Python simulés
+│   ├── 📁 models/               # Modèle XGBoost
+│   ├── 📁 scripts/              # Entraînement modèle
+│   └── 📁 tests/                # Tests backend
+├── 📁 frontend/
+│   ├── 📁 app/                  # Pages Next.js
+│   ├── 📁 components/           # Composants UI
+│   └── 📁 lib/                  # Client API
+├── 📁 mosquitto/                # Config broker MQTT
+├── 📁 docs/                     # Documentation technique
+│   ├── README.md                # Index documentation
+│   ├── AUDIT_WATERING_SYSTEM.md # Audit système arrosage
+│   ├── DEPLOYMENT.md            # Guide déploiement
+│   └── ...
+├── 📄 CDC.md                    # Cahier des charges
+├── 📄 README.md                 # Ce fichier
+├── 📄 docker-compose.yml        # Orchestration Docker
+└── 📄 .env.example              # Variables d'environnement
 ```
 
 ## Configuration
@@ -163,14 +183,28 @@ Le port MQTT est expose seulement sur `127.0.0.1` dans Docker Compose. En produc
 
 ## Endpoints API
 
-- `GET /health` : statut API, MQTT, modele, SQLite, WebSocket.
-- `GET /weather` : meteo Open-Meteo ou fallback demo.
-- `POST /predict` : prediction avec payload complet.
-- `POST /predict/iot` : prediction avec meteo + dernieres donnees MQTT.
-- `GET /iot/live` : dernieres donnees IoT.
-- `WS /ws/iot` : flux IoT live.
-- `GET /history` : historique des predictions.
-- `GET /model/info` : version et metriques du modele.
+### Prédiction de plantation
+- `POST /predict` : prédiction de viabilité de plantation (viable/attendre/non_viable)
+- `POST /predict/iot` : prédiction avec météo + dernières données MQTT automatiques
+- `GET /history` : historique des prédictions de plantation
+- `GET /history/{id}` : détail d'une prédiction
+
+### Conseil d'arrosage (nouveau ✨)
+- `POST /advice/watering` : conseil d'arrosage intelligent basé sur features ML
+  - Entrée : localisation, type sol, irrigation, humidité sol (optionnelle)
+  - Sortie : conseil, priorité, explication, action recommandée, scores ML
+  - Auto-complétion avec météo et IoT si données manquantes
+
+### Données et monitoring
+- `GET /health` : statut API, MQTT, modèle, SQLite, WebSocket
+- `GET /weather` : météo Open-Meteo ou fallback demo
+- `GET /iot/live` : dernières données IoT reçues
+- `WS /ws/iot` : flux IoT live (WebSocket)
+- `GET /model/info` : version et métriques du modèle XGBoost
+
+### Configuration potager
+- `GET /garden/profile` : profil du potager (localisation, sol, irrigation)
+- `PUT /garden/profile` : mise à jour du profil
 
 ## Tests et verification
 

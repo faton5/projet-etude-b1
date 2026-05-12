@@ -109,15 +109,18 @@ jobs:
               --registry-password ${{ secrets.ACR_PASSWORD }} \
               --target-port 8000 \
               --ingress external \
-              --min-replicas 0 \
-              --max-replicas 1 \
-              --cpu 0.5 \
-              --memory 1.0Gi \
+              --min-replicas 1 \
+              --max-replicas 3 \
+              --cpu 1.0 \
+              --memory 2.0Gi \
               --env-vars \
                 APP_ENV=production \
                 POTAGER_DB_PATH=/data/potager.db \
                 MODEL_PATH=/app/models/xgboost_tomate.joblib \
-                CORS_ORIGINS=http://localhost:3000
+                CORS_ORIGINS=http://localhost:3000 \
+                UVICORN_WORKERS=2 \
+                PYTHONOPTIMIZE=2 \
+                UVICORN_LIMIT_CONCURRENCY=100
           fi
 
       - name: Récupérer l'URL backend
@@ -170,13 +173,14 @@ jobs:
               --registry-password ${{ secrets.ACR_PASSWORD }} \
               --target-port 3000 \
               --ingress external \
-              --min-replicas 0 \
-              --max-replicas 1 \
-              --cpu 0.25 \
-              --memory 0.5Gi \
+              --min-replicas 1 \
+              --max-replicas 2 \
+              --cpu 0.5 \
+              --memory 1.0Gi \
               --env-vars \
                 NODE_ENV=production \
-                INTERNAL_API_URL=$BACKEND_URL
+                INTERNAL_API_URL=$BACKEND_URL \
+                NODE_OPTIONS="--max-old-space-size=768"
           fi
 
       # ── CORS : mettre à jour le backend avec l'URL réelle du frontend ─────

@@ -12,7 +12,10 @@ La V0 doit donc rester réaliste : une seule culture, peu d’écrans, une inter
 
 ## 2. Objectif principal de la V0
 
-La V0 doit permettre de prédire si le moment est favorable pour planter des tomates dans le potager de l’EHPAD.
+La V0 doit permettre de :
+
+1. **Prédire si le moment est favorable pour planter des tomates** dans le potager de l’EHPAD
+2. **Fournir des conseils d’arrosage intelligents** pour les plants déjà en terre
 
 L’application doit analyser plusieurs données :
 
@@ -27,7 +30,9 @@ L’application doit analyser plusieurs données :
 - type d’irrigation ;
 - données IoT simulées pour l’humidité du sol, l’irrigation et l’eau utilisée.
 
-À partir de ces données, le modèle prédictif doit retourner une recommandation simple :
+### 2.1 Prédiction de plantation
+
+À partir de ces données, le modèle prédictif XGBoost doit retourner une recommandation simple :
 
 ```text
 viable
@@ -44,6 +49,24 @@ Recommandation : attendre
 Explication : les températures minimales prévues sont encore trop basses pour planter des tomates sans risque.
 ```
 
+### 2.2 Conseils d’arrosage intelligents
+
+Le système doit également fournir des conseils d’arrosage contextuels basés sur les features ML :
+
+```text
+Conseil : Arrosage recommandé dans les 24-48h
+Priorité : élevée
+Action : Prévoir un arrosage de 15 litres par m² dans les prochaines 48h
+Vérification : Vérifier quotidiennement
+```
+
+Les conseils prennent en compte :
+- Le stress hydrique calculé par le modèle ML
+- Le risque de sécheresse (sol + température + pluie)
+- Le type de sol (sableux, argileux, limoneux, etc.)
+- Le type d’irrigation (manuel, goutte-à-goutte, automatique)
+- Les prévisions météo (pluie, température)
+
 ---
 
 ## 3. Périmètre de la V0
@@ -56,10 +79,11 @@ La V0 doit permettre de :
 - lancer une prédiction de viabilité pour la tomate ;
 - prendre en compte des données météo Open-Meteo et agricoles ;
 - prendre en compte des données IoT simulées via MQTT ;
-- utiliser un modèle XGBoost pour prédire une classe ;
-- afficher une recommandation claire ;
+- utiliser un modèle XGBoost pour prédire une classe de viabilité de plantation ;
+- fournir des conseils d’arrosage intelligents basés sur les features ML ;
+- afficher une recommandation claire pour planter et arroser ;
 - afficher une explication de la recommandation ;
-- stocker l’historique des prédictions ;
+- stocker l’historique des prédictions de plantation ;
 - être lançable facilement avec Docker ;
 - être déployable plus tard sur Azure.
 
@@ -70,13 +94,14 @@ La V0 ne doit pas essayer de tout faire.
 Elle ne gère pas encore :
 
 - plusieurs légumes ;
-- une vraie automatisation complète de l’arrosage ;
+- une automatisation physique complète de l’arrosage (vannes connectées) ;
 - une prédiction de rendement précise ;
 - une reconnaissance d’image des maladies ;
-- des capteurs physiques réels ;
+- des capteurs physiques réels (ESP32) ;
 - Azure IoT Hub ;
 - un système complexe de comptes utilisateurs ;
-- une base de données lourde type PostgreSQL.
+- une base de données lourde type PostgreSQL ;
+- un historique des conseils d’arrosage (uniquement prédictions de plantation sauvegardées).
 
 Ces éléments peuvent être prévus dans les évolutions futures.
 
@@ -84,18 +109,21 @@ Ces éléments peuvent être prévus dans les évolutions futures.
 
 | Élément | État | Commentaire |
 |---|---|---|
-| Dashboard Next.js | Fait | Vue principale, historique et panneau IoT live |
-| Formulaire de prédiction | Fait | Mode manuel avec préremplissage météo |
-| API FastAPI | Fait | Routes principales implémentées |
-| Météo Open-Meteo | Fait | Température actuelle, prévisions 7 jours, pluie, gel |
-| Modèle XGBoost | Fait | Modèle chargé et utilisé par l’API |
-| Historique SQLite | Fait | Prédictions persistées |
-| IoT simulé MQTT | Fait | Mosquitto, simulateurs Python, consumer FastAPI |
-| WebSocket IoT live | Fait | Flux `/ws/iot` pour le dashboard |
-| Docker Compose | Configuré | Configuration valide, exécution complète à valider avec Docker Desktop |
-| Dataset réel agricole | Partiel | Modèle basé sur données synthétiques réalistes, pas sur données terrain réelles |
-| Capteurs physiques ESP32 | Non fait | Prévu en V1 sans changer les topics MQTT |
-| Table `model_versions` | Non fait | Prévue mais pas encore implémentée |
+| Dashboard Next.js | ✅ Fait | Vue principale, historique et panneau IoT live |
+| Formulaire de prédiction | ✅ Fait | Mode manuel avec préremplissage météo |
+| API FastAPI | ✅ Fait | Routes principales implémentées |
+| Météo Open-Meteo | ✅ Fait | Température actuelle, prévisions 7 jours, pluie, gel |
+| Modèle XGBoost | ✅ Fait | Modèle chargé et utilisé par l’API |
+| **Conseil d’arrosage ML** | ✅ Fait | Endpoint `/advice/watering` basé sur features ML |
+| Historique SQLite | ✅ Fait | Prédictions de plantation persistées |
+| IoT simulé MQTT | ✅ Fait | Mosquitto, simulateurs Python, consumer FastAPI |
+| WebSocket IoT live | ✅ Fait | Flux `/ws/iot` pour le dashboard |
+| Profil potager | ✅ Fait | Endpoints `/garden/profile` pour configuration |
+| Docker Compose | ⚙️ Configuré | Configuration valide, exécution complète à valider avec Docker Desktop |
+| Dataset réel agricole | ⚠️ Partiel | Modèle basé sur données synthétiques réalistes, pas sur données terrain réelles |
+| Capteurs physiques ESP32 | ❌ Non fait | Prévu en V1 sans changer les topics MQTT |
+| Table `model_versions` | ❌ Non fait | Prévue mais pas encore implémentée |
+| Historique conseils arrosage | ❌ Non fait | Prévu en V1 (actuellement non sauvegardé en DB) |
 
 ---
 
@@ -274,14 +302,17 @@ Il doit gérer :
 | Route | Méthode | Rôle |
 |---|---|---|
 | `/health` | GET | Vérifier que l’API fonctionne |
-| `/predict` | POST | Lancer une prédiction |
+| `/predict` | POST | Lancer une prédiction de plantation |
+| `/predict/iot` | POST | Lancer une prédiction avec météo + IoT simulé |
+| `/advice/watering` | POST | Obtenir un conseil d’arrosage intelligent (ML) |
 | `/history` | GET | Récupérer l’historique |
 | `/history/{id}` | GET | Voir une prédiction précise |
 | `/model/info` | GET | Voir les informations du modèle |
 | `/weather` | GET | Récupérer la météo Open-Meteo |
 | `/iot/live` | GET | Récupérer les dernières données IoT reçues |
 | `/ws/iot` | WebSocket | Diffuser les données IoT live au dashboard |
-| `/predict/iot` | POST | Lancer une prédiction avec météo + IoT simulé |
+| `/garden/profile` | GET | Récupérer le profil du potager (localisation, sol, irrigation) |
+| `/garden/profile` | PUT | Mettre à jour le profil du potager |
 
 ### 7.3 Exemple de payload `/predict`
 
@@ -341,13 +372,48 @@ Le backend complète automatiquement :
 - irrigation IoT ;
 - eau utilisée IoT.
 
+### 7.6 Exemple de payload `/advice/watering`
+
+Le conseil d'arrosage peut fonctionner en mode manuel (données complètes) ou automatique (complété par météo + IoT).
+
+```json
+{
+  "location": "Rennes",
+  "type_sol": "limoneux",
+  "irrigation": "manuel",
+  "humidite_sol": 35
+}
+```
+
+### 7.7 Exemple de réponse `/advice/watering`
+
+```json
+{
+  "conseil": "Arrosage recommandé dans les 24-48h",
+  "priorite": "eleve",
+  "explication": "Le risque de sécheresse est élevé (32.5/100). Sol à 35%, température moyenne de 23°C et aucune pluie prévue. Les conditions vont se dégrader rapidement.",
+  "facteurs_cles": [
+    "humidite_sol_basse",
+    "aucune_pluie_prevue",
+    "temperature_elevee"
+  ],
+  "score_stress_hydrique": 22.5,
+  "score_risque_secheresse": 32.5,
+  "recommandation_action": "Prévoir un arrosage de 12 litres par m² dans les prochaines 48h.",
+  "prochaine_verification": "Vérifier quotidiennement"
+}
+```
+
 ---
 
 ## 8. Partie IA prédictive — XGBoost
 
 ### 8.1 Objectif du modèle
 
-Le modèle IA doit prédire la viabilité d’une plantation de tomates à partir de plusieurs données.
+Le modèle IA a deux objectifs principaux :
+
+1. **Prédire la viabilité d’une plantation de tomates** à partir de plusieurs données
+2. **Fournir des features ML réutilisables** pour d’autres fonctionnalités (ex: conseils d’arrosage)
 
 Il ne doit pas seulement appliquer une règle fixe comme :
 
@@ -355,7 +421,7 @@ Il ne doit pas seulement appliquer une règle fixe comme :
 si température > 18 alors planter
 ```
 
-Il doit apprendre à partir d’un dataset d’entraînement pour prédire une classe.
+Il doit apprendre à partir d’un dataset d’entraînement pour prédire une classe, et calculer des features intermédiaires intelligentes.
 
 ### 8.2 Modèle retenu
 
@@ -400,6 +466,8 @@ non_viable
 
 ### 8.5 Variables d’entrée du modèle
 
+#### Variables brutes
+
 | Variable | Type | Source |
 |---|---|---|
 | culture | texte | fixe : tomate |
@@ -413,6 +481,19 @@ non_viable
 | pluie_7j | booléen | API météo |
 | risque_gel_7j | booléen | calcul backend |
 | water_usage | nombre | estimation ou IoT simulé |
+
+#### Features calculées par le modèle (engineered features)
+
+Le modèle calcule des features intermédiaires intelligentes :
+
+| Feature | Formule | Utilité |
+|---|---|---|
+| `confort_thermique` | `10 - abs(temp_moyenne - 20) * 0.5` ajusté si temp_min < 8°C | Adaptation de la plante aux températures |
+| `stress_hydrique` | `max(0, 50 - humidite_sol) * (1.0 si pas de pluie sinon 0.3)` × 1.5 si irrigation=aucun | Tension sur la plante due au manque d’eau |
+| `risque_secheresse` | `max(0, 40 - humidite_sol) + max(0, temp_moyenne - 25) * 2.5 + bonus si sol sec sans pluie` | Risque combiné (sol + température + pluie) |
+| `score_saison_tomate` | Score 0.1 à 0.9 selon saison et température | Période optimale pour la tomate |
+
+Ces features sont **réutilisées** pour le système de conseil d’arrosage (`/advice/watering`).
 
 ### 8.6 Sortie du modèle
 
@@ -964,36 +1045,79 @@ Phrase à intégrer :
 ### 17.1 V0
 
 ```text
+✅ Prédiction de plantation
 - tomate uniquement
-- modèle XGBoost Classifier
+- modèle XGBoost Classifier avec features engineered
 - dataset synthétique réaliste enrichi météo
+- prédiction viable/attendre/non_viable
+- explication claire et facteurs importants
+- historique des prédictions sauvegardé (SQLite)
+
+✅ Conseil d'arrosage intelligent
+- endpoint /advice/watering
+- réutilise les features ML (stress_hydrique, risque_secheresse)
+- conseils contextuels (type sol, irrigation, météo)
+- priorité (urgent/élevé/moyen/faible/aucun)
+- quantité d'eau recommandée en L/m²
+- timing et prochaine vérification
+
+✅ Infrastructure
 - météo Open-Meteo avec saisie manuelle en secours
 - IoT simulé via MQTT / Mosquitto
-- simulateurs Python humidité sol / irrigation / eau
+- **simulateurs Python intelligents** (humidité sol / irrigation / eau) ✨
+  - réagissent à la météo réelle (pluie du jour, température)
+  - évaporation dynamique selon chaleur
+  - irrigation contextuelle (compense si sol sec)
+  - type de sol respecté (rétention argileux vs sableux)
+  - bruit gaussien pour variabilité naturelle
 - consumer MQTT FastAPI
-- endpoint /iot/live
-- WebSocket /ws/iot
-- dashboard simple
-- FastAPI
-- SQLite
+- endpoint /iot/live et /garden/profile
+- WebSocket /ws/iot pour données live
+- dashboard Next.js simple et responsive
+- FastAPI backend
+- SQLite base de données
 - Docker Compose local
-- historique des prédictions
 ```
 
 ### 17.2 V1 / évolutions
 
 ```text
-- plusieurs légumes
+🌱 Cultures
+- plusieurs légumes (salades, courgettes, radis, etc.)
+- adaptation des seuils ML par culture
+- rotation des cultures
+
+🤖 IoT physique
 - vrais capteurs ESP32
 - capteurs humidité sol / température / luminosité physiques
 - Azure IoT Hub
-- PostgreSQL
-- authentification
-- alertes email ou notifications
-- conseil d’arrosage
+- automatisation physique (vannes d’arrosage connectées)
+
+💾 Base de données
+- PostgreSQL (à la place de SQLite)
+- historique des conseils d’arrosage sauvegardé
+- table model_versions implémentée
+- analytics et statistiques
+
+🔐 Sécurité et utilisateurs
+- authentification (comptes personnel EHPAD)
+- rôles (administrateur / jardinier / consultation)
+- logs d’activité
+
+📱 Notifications
+- alertes email ou notifications push
+- rappels d’arrosage
+- alertes gel ou sécheresse
+
+📊 Prédictions avancées
 - prédiction de rendement
-- reconnaissance d’image des maladies
-- dashboard avancé
+- détection précoce de maladies (ML sur images)
+- optimisation de l’eau (apprentissage historique)
+
+🎨 Dashboard avancé
+- graphiques d’évolution (humidité, température)
+- calendrier de plantation et récolte
+- vue multi-parcelles
 ```
 
 ---
